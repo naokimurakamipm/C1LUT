@@ -43,8 +43,8 @@ def channel_swap_cube(size: int = 5) -> bytes:
 
 def make_synthetic_base(path: Path, grid: int = 33) -> Path:
     """Build a valid scnr/RGB/Lab v2 profile whose camera RGB equals gamma-encoded sRGB."""
-    from c1lut.colorspaces import decode_transfer, rgb_linear_to_xyz_d50, xyz_d50_to_lab
-    from c1lut.icc import (
+    from conelut.colorspaces import decode_transfer, rgb_linear_to_xyz_d50, xyz_d50_to_lab
+    from conelut.icc import (
         PCS_LAB,
         encode_legacy_lab16,
         make_desc,
@@ -67,7 +67,7 @@ def make_synthetic_base(path: Path, grid: int = 33) -> Path:
     header[8], header[9] = 0x02, 0x10
     tags = [
         (b"desc", make_desc("TestCamera-Generic", (2, 1))),
-        (b"cprt", make_text("C1LUT tests")),
+        (b"cprt", make_text("COneLUT tests")),
         (b"wtpt", make_xyz_type((0.9642, 1.0, 0.8249))),
         (b"A2B0", make_mft2(encode_legacy_lab16(lab).reshape(-1), grid)),
     ]

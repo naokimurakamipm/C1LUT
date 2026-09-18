@@ -47,7 +47,7 @@ def destination(path, policy="rename", used=None, protected=(), log=lambda _: No
 def atomic_write(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=".c1lut-", dir=path.parent)
+    fd, name = tempfile.mkstemp(prefix=".conelut-", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)

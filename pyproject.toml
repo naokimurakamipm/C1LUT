@@ -1,5 +1,5 @@
 [project]
-name = 'c1lut'
+name = 'conelut'
 version = '2.0.0'
 readme = 'README.md'
 requires-python = '>=3.12'

@@ -1,4 +1,4 @@
-# C1LUT — 計測可能な CUBE → ICC 変換
+# C-One LUT — 計測可能な CUBE → ICC 変換
 
 `.cube` 3D LUT を Capture One 用カメラ入力 ICC に焼き込む、**数値検証できる色管理パイプライン** です。ベース ICC のキャリブレーションを保持したまま LUT の Look を反映します。
 
@@ -125,7 +125,7 @@ Validation report
 
 ```powershell
 python main.py            (引数なしで GUI が開く)
-.\C1LUT.pyw               (コンソールなしで起動)
+.\COneLUT.pyw               (コンソールなしで起動)
 ```
 
 - **基本設定**: LUT 入力 / 出力プリセット (既定 `Rec.709 Gamma 2.4`)、Capture One Curve (既定 Linear Response)、追加中間調ガンマ (既定 1.0)、検証の有無
@@ -166,7 +166,7 @@ Windows アプリのビルド:
 .venv\Scripts\python tools\fetch_lcms.py
 ```
 
-生成物は `dist\C1LUT\C1LUT.exe`。配布時は `dist\C1LUT` フォルダー全体を ZIP にまとめます (lcms2.dll と MIT ライセンス表示を含みます)。
+生成物は `dist\COneLUT\COneLUT.exe`。配布時は `dist\COneLUT` フォルダー全体を ZIP にまとめます (lcms2.dll と MIT ライセンス表示を含みます)。
 
 アプリアイコン(3D LUT の RGB キューブ)は `art/make_icon.py` で生成しています。デザインを変えたい場合はスクリプト内の色・形状を編集して再生成し、ビルドし直してください:
 
@@ -175,10 +175,10 @@ python art\make_icon.py
 .\build_win_app.bat
 ```
 
-ビルド後の検証(ヘッドレスで変換まで実行、`%TEMP%\C1LUT-selftest.log` に結果を出力):
+ビルド後の検証(ヘッドレスで変換まで実行、`%TEMP%\COneLUT-selftest.log` に結果を出力):
 
 ```powershell
-dist\C1LUT\C1LUT.exe --selftest   # 終了コード 0 で正常
+dist\COneLUT\COneLUT.exe --selftest   # 終了コード 0 で正常
 ```
 
 テスト:
@@ -193,11 +193,11 @@ dist\C1LUT\C1LUT.exe --selftest   # 終了コード 0 で正常
 ## 構成
 
 ```text
-C1LUT/
+C-One-LUT/
 ├─ main.py            CLI (GUI ランチャー兼用)
 ├─ gui.py             Tk GUI (基本 / 詳細 / 保存先タブ)
 ├─ batch_convert.py   cube/ → icc/ フォルダー一括変換
-├─ c1lut/
+├─ conelut/
 │  ├─ cube.py         CUBE パーサー (DOMAIN / 1D shaper / 厳密検証)
 │  ├─ interpolation.py四面体・三線形・最近傍 + リサンプル
 │  ├─ colorspaces.py  色域 / トランスファー分離モデル、明示的 CAT
@@ -220,6 +220,12 @@ C1LUT/
 - 33³ 以外の ICC グリッドは Capture One 実機での互換性確認が未済
 - Alliance の `#Input: Rec.709` のようにヘッダコメントがあってもトランスファー (Gamma 2.4 / BT.1886 / OETF…) は自動決定しません。A/B 比較 (`Rec.709 Gamma 2.4` vs `sRGB` など) で確定してください
 - Leica SL601 + Alliance LUT の Capture One 実描画比較、clean Windows VM での EXE 動作確認は未実施
+
+## ライセンス
+
+- 本体のコードは **GNU General Public License v3** のもとで公開します ([LICENSE](LICENSE))
+- 同梱の `native/lcms2.dll` は LittleCMS (MIT License) で、`native/LCMS-LICENSE` がその表示です
+。
 
 ## 商標について
 

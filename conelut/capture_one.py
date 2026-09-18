@@ -120,7 +120,7 @@ def build_intent_probe_profile() -> bytes:
     header[9] = 0x10
     tags: list[tuple[bytes, bytes]] = [
         (b"desc", make_desc("C1 Intent Probe (A2B0=RED A2B1=GREEN A2B2=BLUE)", (2, 1))),
-        (b"cprt", make_text("C1LUT intent probe")),
+        (b"cprt", make_text("C-One LUT intent probe")),
         (b"wtpt", make_xyz_type(_D50_XYZ)),
     ]
     for intent, boost in boosts.items():

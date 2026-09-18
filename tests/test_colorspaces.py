@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from c1lut.colorspaces import (
+from conelut.colorspaces import (
     TRANSFER_CHOICES,
     ColorspaceError,
     decode_transfer,
@@ -57,7 +57,7 @@ def test_xyz_lab_round_trip():
 
 
 def test_d65_d50_adaptation_round_trip():
-    from c1lut.colorspaces import _D50_XYZ, _whitepoint_xyz, get_colourspace, xyz_adapt
+    from conelut.colorspaces import _D50_XYZ, _whitepoint_xyz, get_colourspace, xyz_adapt
 
     xyz = rgb_linear_to_xyz_d50(np.array([[0.2, 0.4, 0.6]]), "sRGB", "Bradford")
     cs = get_colourspace("sRGB")
@@ -75,7 +75,7 @@ def test_unknown_names_raise():
 
 def test_cli_style_aliases_resolve():
     """Short CLI spellings resolve to the canonical colour-science names."""
-    from c1lut.colorspaces import canonical_gamut, canonical_transfer
+    from conelut.colorspaces import canonical_gamut, canonical_transfer
 
     assert canonical_gamut("Rec.709") == "ITU-R BT.709"
     assert canonical_gamut("bt709") == "ITU-R BT.709"

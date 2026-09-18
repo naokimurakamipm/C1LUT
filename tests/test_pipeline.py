@@ -7,9 +7,9 @@ import struct
 import numpy as np
 import pytest
 
-from c1lut.cms import BaseProfile, Mft2Tag
-from c1lut.cube import CubeLUT
-from c1lut.pipeline import (
+from conelut.cms import BaseProfile, Mft2Tag
+from conelut.cube import CubeLUT
+from conelut.pipeline import (
     ConversionParams,
     apply_film_standard_legacy,
     camera_grid,
@@ -36,7 +36,7 @@ def identity_lut() -> CubeLUT:
 
 def test_base_eval_matches_srgb_identity(synthetic_base):
     """The synthetic base maps camera RGB == sRGB: the eval must be Lab(sRGB(x))."""
-    from c1lut.colorspaces import decode_transfer, rgb_linear_to_xyz_d50, xyz_d50_to_lab
+    from conelut.colorspaces import decode_transfer, rgb_linear_to_xyz_d50, xyz_d50_to_lab
 
     rng = np.random.default_rng(6)
     rgb = rng.random((200, 3))
@@ -130,7 +130,7 @@ def test_midtone_gamma_changes_midtones(synthetic_base):
 
 
 def test_generate_profile_meta(synthetic_base, tmp_path):
-    from c1lut.icc import ICCProfile
+    from conelut.icc import ICCProfile
 
     cube = parse_tmp_cube(tmp_path)
     params = ConversionParams(icc_intent="mirror")
@@ -157,7 +157,7 @@ def test_generate_profile_meta(synthetic_base, tmp_path):
     data3, _ = generate_profile(cube, synthetic_base, params_look, log=lambda *_: None)
     assert ICCProfile(data3).description() == "TestCamera-identity"
 
-    from c1lut.pipeline import output_filename
+    from conelut.pipeline import output_filename
 
     assert output_filename(cube, synthetic_base) == "TestCamera-identity.icc"
 
@@ -165,6 +165,6 @@ def test_generate_profile_meta(synthetic_base, tmp_path):
 def parse_tmp_cube(tmp_path):
     from helpers import identity_cube, write_cube
 
-    from c1lut.cube import parse_cube
+    from conelut.cube import parse_cube
 
     return parse_cube(write_cube(tmp_path / "identity.cube", identity_cube(9)))

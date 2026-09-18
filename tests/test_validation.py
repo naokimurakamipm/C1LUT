@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from c1lut.cms import BaseProfile
-from c1lut.cube import CubeLUT, parse_cube
-from c1lut.pipeline import ConversionParams, generate_profile
-from c1lut.validation import validate_conversion
+from conelut.cms import BaseProfile
+from conelut.cube import CubeLUT, parse_cube
+from conelut.pipeline import ConversionParams, generate_profile
+from conelut.validation import validate_conversion
 from helpers import identity_cube, make_synthetic_base, write_cube
 
 

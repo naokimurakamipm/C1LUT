@@ -10,9 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from c1lut.cms import BaseProfile, BaseProfileError
-from c1lut.convert import CONVERT_ERRORS, convert_file
-from c1lut.pipeline import ConversionParams
+from conelut.cms import BaseProfile, BaseProfileError
+from conelut.convert import CONVERT_ERRORS, convert_file
+from conelut.pipeline import ConversionParams
 
 BASE_ICC = Path("base.icc")  # <- put your camera profile here or edit the path
 OUTPUT_DIR = Path("icc")

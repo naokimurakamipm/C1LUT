@@ -376,7 +376,7 @@ def compare_legacy(cube, base, params, random_samples=DEFAULT_RANDOM_SAMPLES, lo
                             cat="CAT02", interpolation="trilinear", icc_grid=33)
     legacy_base = BaseProfile(base.path, precision="8bit")
     blob, _ = generate_profile(cube, legacy_base, legacy_params, log=lambda _: None)
-    with tempfile.TemporaryDirectory(prefix="c1lut-legacy-compare-") as folder:
+    with tempfile.TemporaryDirectory(prefix="conelut-legacy-compare-") as folder:
         path = Path(folder) / "legacy.icc"
         path.write_bytes(blob)
         report = validate_conversion(cube, base, params, path, random_samples=random_samples, include_lcms=True, log=lambda _: None)

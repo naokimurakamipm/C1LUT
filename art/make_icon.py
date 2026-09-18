@@ -1,4 +1,4 @@
-"""Generate the C1LUT application icon (art/C1LUT.ico + preview PNG).
+"""Generate the C-One LUT application icon (art/COneLUT.ico + preview PNG).
 
 Draws an isometric RGB cube - the 3D LUT - on a dark rounded square.
 Run:  python art/make_icon.py   (requires Pillow)
@@ -10,8 +10,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-OUT = Path(__file__).with_name("C1LUT.ico")
-PREVIEW = Path(__file__).with_name("C1LUT_preview.png")
+OUT = Path(__file__).with_name("COneLUT.ico")
+PREVIEW = Path(__file__).with_name("COneLUT_preview.png")
 
 BG = (18, 22, 40, 255)      # dark navy
 EDGE = (10, 13, 26, 255)    # outline

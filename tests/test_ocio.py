@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from c1lut.cube import parse_cube
+from conelut.cube import parse_cube
 
 ocio = pytest.importorskip("PyOpenColorIO")
 

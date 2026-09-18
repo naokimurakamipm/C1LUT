@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""C1LUT desktop interface.
+"""COneLUT desktop interface.
 
 Basic mode keeps the simple preset flow recommended by the spec (section 24);
 advanced mode exposes the full conversion model. Only plain Python values and
@@ -17,14 +17,14 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from c1lut.capture_one import find_profiles_dir, install_profile
-from c1lut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
-from c1lut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES
-from c1lut.convert import CONVERT_ERRORS, convert_file
-from c1lut.cube import parse_cube
-from c1lut.pipeline import C1_CURVES, DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
-from c1lut.presets import PRESETS, resolve_preset
-from c1lut.validation import DEFAULT_RANDOM_SAMPLES
+from conelut.capture_one import find_profiles_dir, install_profile
+from conelut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
+from conelut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES
+from conelut.convert import CONVERT_ERRORS, convert_file
+from conelut.cube import parse_cube
+from conelut.pipeline import C1_CURVES, DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
+from conelut.presets import PRESETS, resolve_preset
+from conelut.validation import DEFAULT_RANDOM_SAMPLES
 
 CUSTOM_PRESET = "カスタム"
 EXISTING_POLICIES = {
@@ -56,7 +56,7 @@ DESC_MODE_LABELS = {
 class Cube2IccApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("C1LUT — CUBE → ICC")
+        root.title("C-One LUT — CUBE → ICC")
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.events: Queue = Queue()
         self.cancel_event = threading.Event()
@@ -520,7 +520,7 @@ class Cube2IccApp:
                  f"C1 Curve: {params.c1_curve}  |  中間調ガンマ: {params.midtone_gamma}")
         self.worker = threading.Thread(
             target=self.conversion_worker,
-            args=(paths, base, params, output_dir, options), name="c1lut-convert")
+            args=(paths, base, params, output_dir, options), name="conelut-convert")
         self.set_busy(True)
         self.status_text.set("変換を準備しています…")
         self.worker.start()
@@ -685,12 +685,12 @@ def np_is_one(values) -> bool:
 
 
 def apply_window_icon(root: tk.Tk) -> None:
-    """Set the title-bar/taskbar icon (bundled at art/C1LUT.ico; bundled into
+    """Set the title-bar/taskbar icon (bundled at art/COneLUT.ico; bundled into
     _MEIPASS/art in frozen builds). Failure is cosmetic, never fatal."""
     here = Path(__file__).resolve().parent
     for candidate in (
-        Path(getattr(sys, "_MEIPASS", here)) / "art" / "C1LUT.ico",
-        here.parent / "art" / "C1LUT.ico",
+        Path(getattr(sys, "_MEIPASS", here)) / "art" / "COneLUT.ico",
+        here.parent / "art" / "COneLUT.ico",
     ):
         if candidate.is_file():
             try:
@@ -711,11 +711,11 @@ def main(argv=None):
     if "--selftest" in arguments:
         # Headless smoke test for frozen builds: converts a synthetic profile
         # through the full pipeline and exits without opening a window.
-        from c1lut.selftest import run_selftest
+        from conelut.selftest import run_selftest
 
         code, text = run_selftest()
         print(text)
-        log_path = Path(os.environ.get("TEMP", ".")) / "C1LUT-selftest.log"
+        log_path = Path(os.environ.get("TEMP", ".")) / "COneLUT-selftest.log"
         try:
             log_path.write_text(text + "\n", encoding="utf-8")
             print(f"selftest log: {log_path}")

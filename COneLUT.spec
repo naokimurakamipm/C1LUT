@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller recipe for the C1LUT app (Windows onedir; macOS .app bundle).
+"""PyInstaller recipe for the C-One LUT app (Windows onedir; macOS .app bundle).
 
 Organised as small helpers plus a single build() call so each workaround
 this project needs is documented next to the code implementing it.
@@ -12,15 +12,15 @@ import scipy
 
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
-APP_NAME = "C1LUT"
+APP_NAME = "COneLUT"
 ENTRY_POINT = "gui.py"
-ICON = "art/C1LUT.ico"
+ICON = "art/COneLUT.ico"
 
 # Runtime assets shipped with the app: the native lcms2 CMM used by the
 # independent dE2000 verification, plus its licence and provenance records.
 RUNTIME_BINARIES = [("native/lcms2.dll", "native")]
 RUNTIME_DATA = [
-    ("art/C1LUT.ico", "art"),
+    ("art/COneLUT.ico", "art"),
     ("native/LCMS-LICENSE", "native"),
     ("native/source.json", "native"),
 ]
@@ -81,7 +81,7 @@ def build():
         BUNDLE(
             app_folder,
             name=f"{APP_NAME}.app",
-            bundle_identifier="com.c1lut.desktop",
+            bundle_identifier="com.conelut.desktop",
         )
 
 

@@ -11,10 +11,10 @@ import tempfile
 
 import numpy as np
 
-from c1lut.colorspaces import decode_transfer, rgb_linear_to_xyz_d50, xyz_d50_to_lab
-from c1lut.convert import convert_file
-from c1lut.cms import BaseProfile
-from c1lut.icc import (
+from conelut.colorspaces import decode_transfer, rgb_linear_to_xyz_d50, xyz_d50_to_lab
+from conelut.convert import convert_file
+from conelut.cms import BaseProfile
+from conelut.icc import (
     PCS_LAB,
     encode_legacy_lab16,
     make_desc,
@@ -23,7 +23,7 @@ from c1lut.icc import (
     make_xyz_type,
     write_profile,
 )
-from c1lut.pipeline import ConversionParams
+from conelut.pipeline import ConversionParams
 
 IDENTITY_MEAN_LIMIT = 0.5  # synthetic base + identity LUT should land far below this
 
@@ -51,7 +51,7 @@ def _synthetic_base(path: Path, grid: int = 17) -> Path:
     header[8], header[9] = 0x02, 0x10
     tags = [
         (b"desc", make_desc("SelfTestCamera-Generic", (2, 1))),
-        (b"cprt", make_text("C1LUT selftest")),
+        (b"cprt", make_text("C-One LUT selftest")),
         (b"wtpt", make_xyz_type((0.9642, 1.0, 0.8249))),
         (b"A2B0", make_mft2(encode_legacy_lab16(lab).reshape(-1), grid)),
     ]
@@ -63,7 +63,7 @@ def run_selftest(log_path: Path | None = None) -> tuple[int, str]:
     """Execute the frozen-build smoke test; returns (exit_code, report text)."""
     lines: list[str] = []
     try:
-        with tempfile.TemporaryDirectory(prefix="c1lut-selftest-") as temp:
+        with tempfile.TemporaryDirectory(prefix="conelut-selftest-") as temp:
             temp_dir = Path(temp)
             cube_path = temp_dir / "selftest.cube"
             cube_path.write_bytes(_identity_cube_bytes(9))

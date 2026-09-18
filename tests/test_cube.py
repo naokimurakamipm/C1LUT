@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from c1lut.cube import CubeLUT, CubeParseError, parse_cube
+from conelut.cube import CubeLUT, CubeParseError, parse_cube
 from helpers import identity_cube, write_cube
 
 

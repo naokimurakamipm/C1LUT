@@ -8,7 +8,7 @@ import struct
 import numpy as np
 import pytest
 
-from c1lut.icc import (
+from conelut.icc import (
     ICCError,
     ICCProfile,
     decode_legacy_lab16,

@@ -44,7 +44,7 @@ def test_basic_conversion_with_validation(env):
     # Output follows the 1.x style <Camera>-<Look>.icc and keeps the base
     # profile's desc so Capture One links the profile to the camera.
     assert outputs[0].stem == "TestCamera-film"
-    from c1lut.icc import ICCProfile
+    from conelut.icc import ICCProfile
 
     assert ICCProfile(outputs[0].read_bytes()).description() == "TestCamera-Generic"
 
@@ -58,7 +58,7 @@ def test_desc_mode_look_names_profiles_by_camera_and_look(env):
     assert code == 0
     outputs = list((tmp / "lookmode").glob("*.icc"))
     assert [p.stem for p in outputs] == ["TestCamera-film"]
-    from c1lut.icc import ICCProfile
+    from conelut.icc import ICCProfile
 
     assert ICCProfile(outputs[0].read_bytes()).description() == "TestCamera-film"
 
@@ -112,7 +112,7 @@ def test_intent_probe(tmp_path):
     data = probe.read_bytes()
     assert data[36:40] == b"acsp"
     assert b"A2B0" in data[128:512] or data[:4]  # tag table exists
-    from c1lut.icc import ICCProfile
+    from conelut.icc import ICCProfile
 
     profile = ICCProfile(data)
     assert profile.tag(b"A2B0") and profile.tag(b"A2B1") and profile.tag(b"A2B2")

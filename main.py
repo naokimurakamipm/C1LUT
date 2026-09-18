@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""C1LUT — command line interface.
+"""C-One LUT — command line interface.
 
 Examples (spec section 37):
 
@@ -29,11 +29,11 @@ from pathlib import Path
 
 import numpy as np
 
-from c1lut.capture_one import write_intent_probe
-from c1lut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
-from c1lut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES, ColorspaceError
-from c1lut.cube import CubeParseError, parse_cube
-from c1lut.pipeline import (
+from conelut.capture_one import write_intent_probe
+from conelut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
+from conelut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES, ColorspaceError
+from conelut.cube import CubeParseError, parse_cube
+from conelut.pipeline import (
     C1_CURVES,
     DEFAULT_GRID,
     ICC_GRID_CHOICES,
@@ -41,17 +41,17 @@ from c1lut.pipeline import (
     generate_profile,
     output_filename,
 )
-from c1lut.presets import PRESETS, LEGACY_PRESET_ALIASES, resolve_preset
-from c1lut.convert import convert_file
-from c1lut.files import destination as choose_destination
-from c1lut.validation import DEFAULT_RANDOM_SAMPLES, validate_conversion
+from conelut.presets import PRESETS, LEGACY_PRESET_ALIASES, resolve_preset
+from conelut.convert import convert_file
+from conelut.files import destination as choose_destination
+from conelut.validation import DEFAULT_RANDOM_SAMPLES, validate_conversion
 
 LEGACY_COMPAT = "2026.09"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="c1lut",
+        prog="conelut",
         description="Convert CUBE LUTs to ICC camera input profiles for Capture One (v2 engine)",
         epilog="Run without arguments to open the GUI.",
     )
@@ -151,7 +151,7 @@ def _resolve_encoding(args) -> tuple[str, str, str, str]:
         input_gamut, input_transfer = preset["input_gamut"], preset["input_transfer"]
     output_gamut = args.output_gamut or ("sRGB" if legacy else None) or (preset["output_gamut"] if preset else input_gamut)
     output_transfer = args.output_transfer or ("sRGB" if legacy else None) or (preset["output_transfer"] if preset else input_transfer)
-    from c1lut.colorspaces import canonical_gamut, canonical_transfer
+    from conelut.colorspaces import canonical_gamut, canonical_transfer
     return canonical_gamut(input_gamut), canonical_transfer(input_transfer), canonical_gamut(output_gamut), canonical_transfer(output_transfer)
 
 

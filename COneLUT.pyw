@@ -1,4 +1,4 @@
-"""Windows launcher: starts the C1LUT GUI without a console window."""
+"""Windows launcher: starts the COneLUT GUI without a console window."""
 import os
 import sys
 

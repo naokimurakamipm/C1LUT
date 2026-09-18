@@ -11,9 +11,9 @@ from helpers import identity_cube, make_synthetic_base, write_cube
 
 
 def test_convert_file_never_overwrites_base(tmp_path):
-    from c1lut.cms import BaseProfile
-    from c1lut.convert import convert_file
-    from c1lut.pipeline import ConversionParams
+    from conelut.cms import BaseProfile
+    from conelut.convert import convert_file
+    from conelut.pipeline import ConversionParams
 
     base_path = make_synthetic_base(tmp_path / "TestCamera-Generic.icc")
     before = base_path.read_bytes()
@@ -32,9 +32,9 @@ def test_convert_file_never_overwrites_base(tmp_path):
 
 
 def test_convert_file_honours_overwrite_policy(tmp_path):
-    from c1lut.cms import BaseProfile
-    from c1lut.convert import convert_file
-    from c1lut.pipeline import ConversionParams
+    from conelut.cms import BaseProfile
+    from conelut.convert import convert_file
+    from conelut.pipeline import ConversionParams
 
     base = BaseProfile(make_synthetic_base(tmp_path / "base.icc"))
     cube = write_cube(tmp_path / "film.cube", identity_cube(9))
@@ -78,10 +78,10 @@ def test_parametric_trc_decoding(tmp_path):
     (g, a, b, c, d) - the sRGB piecewise curve. It used to be misparsed
     (parameters read from the wrong offset), returning 0 everywhere.
     """
-    from c1lut.cms import _read_curve
+    from conelut.cms import _read_curve
 
     path = _write_matrix_profile(tmp_path)
-    from c1lut.icc import ICCProfile
+    from conelut.icc import ICCProfile
 
     profile = ICCProfile(path.read_bytes())
     trc = profile.tag(b"rTRC")
@@ -92,7 +92,7 @@ def test_parametric_trc_decoding(tmp_path):
 
 
 def test_matrix_shaper_base_loads_and_evaluates(tmp_path):
-    from c1lut.cms import BaseProfile, BaseProfileError
+    from conelut.cms import BaseProfile, BaseProfileError
 
     base = BaseProfile(_write_matrix_profile(tmp_path), precision="float")
     assert base.available_intents == []
@@ -113,10 +113,10 @@ def test_matrix_shaper_base_loads_and_evaluates(tmp_path):
 
 
 def test_matrix_shaper_full_conversion(tmp_path):
-    from c1lut.cms import BaseProfile
-    from c1lut.convert import convert_file
-    from c1lut.icc import ICCProfile
-    from c1lut.pipeline import ConversionParams
+    from conelut.cms import BaseProfile
+    from conelut.convert import convert_file
+    from conelut.icc import ICCProfile
+    from conelut.pipeline import ConversionParams
 
     base = BaseProfile(_write_matrix_profile(tmp_path))
     cube = write_cube(tmp_path / "film.cube", identity_cube(9))

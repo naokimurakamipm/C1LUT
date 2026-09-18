@@ -1,4 +1,4 @@
-"""C1LUT — measurable CUBE LUT → ICC pipeline for Capture One.
+"""COneLUT — measurable CUBE LUT → ICC pipeline for Capture One.
 
 Design goals (see spec):
 - Base ICC injection concept kept; Camera RGB is the pipeline origin.
@@ -10,4 +10,4 @@ Design goals (see spec):
 
 __version__ = "2.0.0"
 
-APP_NAME = "C1LUT"
+APP_NAME = "COneLUT"

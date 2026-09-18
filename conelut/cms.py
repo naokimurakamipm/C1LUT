@@ -440,12 +440,12 @@ def lcms2_available() -> bool:
 
 def _find_lcms2_dll():
     import sys
-    env = os.environ.get("C1LUT_LCMS2_DLL")
+    env = os.environ.get("CONE_LUT_LCMS2_DLL")
     if env:
         try:
             return ctypes.CDLL(env)
         except OSError as exc:
-            raise BaseProfileError(f"cannot load C1LUT_LCMS2_DLL: {exc}") from exc
+            raise BaseProfileError(f"cannot load CONE_LUT_LCMS2_DLL: {exc}") from exc
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     candidates = [str(root / "native" / "lcms2.dll"), "lcms2.dll"]
     found = ctypes.util.find_library("lcms2")

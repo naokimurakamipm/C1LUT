@@ -1,6 +1,6 @@
 @echo off
-REM C1LUT Windows build driver. Same contract as before:
-REM   build_win_app.bat [--no-pause]  ->  dist\C1LUT\C1LUT.exe  (exit 0/1)
+REM C-One LUT Windows build driver. Same contract as before:
+REM   build_win_app.bat [--no-pause]  ->  dist\COneLUT\COneLUT.exe  (exit 0/1)
 setlocal
 cd /d "%~dp0"
 set "RC=1"
@@ -31,13 +31,13 @@ exit /b %RC%
 REM ---- try_build <python command>: 0 = built, 1 = interpreter absent, 2 = build failed
 :try_build
 %~1 --version >nul 2>nul || exit /b 1
-echo Building C1LUT with: %~1
-%~1 -m PyInstaller --noconfirm --clean C1LUT.spec
+echo Building COneLUT with: %~1
+%~1 -m PyInstaller --noconfirm --clean COneLUT.spec
 if errorlevel 1 (
     echo [error] PyInstaller failed - see its output above.
     exit /b 2
 )
 echo.
-echo OK: dist\C1LUT\C1LUT.exe  ^(ship the entire dist\C1LUT folder^)
+echo OK: dist\COneLUT\COneLUT.exe  ^(ship the entire dist\COneLUT folder^)
 set "RC=0"
 exit /b 0

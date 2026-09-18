@@ -10,15 +10,15 @@ import numpy as np
 import pytest
 from PIL import Image, ImageCms
 
-from c1lut.cms import BaseProfile, BaseProfileError, MabTag, _read_curve, create_lcms2_backend, _evaluate_via_imagecms
-from c1lut.colorspaces import lab_to_xyz_d50, rgb_linear_to_xyz_d50, xyz_d50_to_lab
-from c1lut.capture_one import install_profile, build_intent_probe_profile
-from c1lut.convert import convert_file
-from c1lut.cube import CubeLUT, CubeParseError, parse_cube
-from c1lut.files import destination, path_key
-from c1lut.icc import ICCProfile, make_desc, make_xyz_type, write_profile
-from c1lut.pipeline import ConversionParams, generate_profile, reference_transform
-from c1lut.validation import validate_conversion
+from conelut.cms import BaseProfile, BaseProfileError, MabTag, _read_curve, create_lcms2_backend, _evaluate_via_imagecms
+from conelut.colorspaces import lab_to_xyz_d50, rgb_linear_to_xyz_d50, xyz_d50_to_lab
+from conelut.capture_one import install_profile, build_intent_probe_profile
+from conelut.convert import convert_file
+from conelut.cube import CubeLUT, CubeParseError, parse_cube
+from conelut.files import destination, path_key
+from conelut.icc import ICCProfile, make_desc, make_xyz_type, write_profile
+from conelut.pipeline import ConversionParams, generate_profile, reference_transform
+from conelut.validation import validate_conversion
 from helpers import identity_cube, identity_cube_data, make_synthetic_base, write_cube
 from main import main, build_arg_parser, _resolve_encoding
 
@@ -133,7 +133,7 @@ def test_native_xyz_base_returns_xyz_not_lab(tmp_path):
 
 def test_native_invalid_dll_is_not_silent(tmp_path, monkeypatch):
     path = matrix_base(tmp_path / "base.icc")
-    monkeypatch.setenv("C1LUT_LCMS2_DLL", str(tmp_path / "missing.dll"))
+    monkeypatch.setenv("CONE_LUT_LCMS2_DLL", str(tmp_path / "missing.dll"))
     with pytest.raises(BaseProfileError, match="cannot load"):
         BaseProfile(path, precision="lcms").evaluate(np.zeros((1, 3)), 0)
 

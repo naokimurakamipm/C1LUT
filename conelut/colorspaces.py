@@ -3,7 +3,7 @@
 Gamut (primaries + white point) and transfer (encoding curve) are modelled
 separately: ``Rec.709`` and ``sRGB`` share primaries but differ in transfer
 function, so a single "preset" name must never imply both. Presets in
-:mod:`c1lut.presets` are a convenience layer on top of this module.
+:mod:`conelut.presets` are a convenience layer on top of this module.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from c1lut.interpolation import interpolate_1d_table, interpolate_3d, resample_3d
+from conelut.interpolation import interpolate_1d_table, interpolate_3d, resample_3d
 from helpers import identity_cube_data
 
 INTERPOLATING_METHODS = ("tetrahedral", "trilinear")
