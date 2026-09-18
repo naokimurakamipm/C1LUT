@@ -1,0 +1,9 @@
+{
+  "url": "https://api.anaconda.org/download/conda-forge/lcms2/2.17/win-64/lcms2-2.17-hbcf6048_0.conda",
+  "sha256": "7712eab5f1a35ca3ea6db48ead49e0d6ac7f96f8560da8023e61b3dbe4f3b25d",
+  "license": "MIT",
+  "files": [
+    "LCMS-LICENSE",
+    "lcms2.dll"
+  ]
+}
