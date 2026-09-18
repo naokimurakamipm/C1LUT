@@ -125,8 +125,12 @@ Validation report
 
 ```powershell
 python main.py            (引数なしで GUI が開く)
-.\COneLUT.pyw               (コンソールなしで起動)
+.\COneLUT.pyw             (コンソールなしで起動)
 ```
+
+![C-One LUT GUI](art/ui_preview.png)
+
+Capture One を想起させるダークテーマ (チャコール + オレンジのアクセント、`conelut/theme.py`) で、高 DPI (200% など) でも滲まず描画されます。スクリーンショットは `python tools/shot_ui.py` で再生成できます。
 
 - **基本設定**: LUT 入力 / 出力プリセット (既定 `Rec.709 Gamma 2.4`)、Capture One Curve (既定 Linear Response)、追加中間調ガンマ (既定 1.0)、検証の有無
 - **ベース ICC 検索**: 検出したプロファイルフォルダーを再帰的に走査し、キーワード (空白区切り AND、大文字小文字不限) でドロップダウンを絞り込めます。選択欄は検索にリアルタイムで追従し、絞り込みの先頭ヒットを表示します (現在の選択が引き続き一致する場合は保持)。検索を空にしても選択は変わりません (例: `leica sl`)
@@ -208,9 +212,10 @@ C-One-LUT/
 │  ├─ convert.py      1 ファイル変換オーケストレーション
 │  ├─ files.py        保存先保護・衝突解決・アトミック書き込み
 │  ├─ presets.py      簡易プリセット (短縮名エイリアス込み)
+│  ├─ theme.py        Capture One 風ダークテーマ + 高 DPI 対応
 │  └─ capture_one.py  プロファイル探索 / intent プローブ / インストール
 ├─ native/            lcms2.dll とライセンス (EXE に同梱)
-├─ tools/             fetch_lcms.py (チェックサム検証付き DLL 取得)
+├─ tools/             fetch_lcms.py (チェックサム検証付き DLL 取得) / shot_ui.py (スクリーンショット生成)
 └─ tests/
 ```
 

@@ -15,7 +15,7 @@ import re
 import sys
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from conelut.capture_one import find_profiles_dir, install_profile
 from conelut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
@@ -24,7 +24,21 @@ from conelut.convert import CONVERT_ERRORS, convert_file
 from conelut.cube import parse_cube
 from conelut.pipeline import C1_CURVES, DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
 from conelut.presets import PRESETS, resolve_preset
+from conelut.theme import (
+    CARD_FRAME,
+    DIM_LABEL,
+    PRIMARY_BUTTON,
+    STATUS_COLORS,
+    apply_capture_one_style,
+    configure_log_text,
+    enable_high_dpi,
+)
 from conelut.validation import DEFAULT_RANDOM_SAMPLES
+
+# Must run before the first Tk window is created (crisp rendering and honest
+# winfo coordinates on scaled displays).
+if sys.platform == "win32":
+    enable_high_dpi()
 
 CUSTOM_PRESET = "カスタム"
 EXISTING_POLICIES = {
@@ -131,11 +145,7 @@ class Cube2IccApp:
         return widget
 
     def setup_ui(self):
-        style = ttk.Style(self.root)
-        if sys.platform == "win32" and "vista" in style.theme_names():
-            style.theme_use("vista")
-        style.configure("Heading.TLabel", font=("Yu Gothic UI", 17, "bold"))
-        style.configure("Treeview", rowheight=25)
+        apply_capture_one_style(self.root, ttk.Style(self.root))
         frame = ttk.Frame(self.root, padding=14)
         frame.pack(fill=tk.BOTH, expand=True)
         frame.columnconfigure(0, weight=1)
@@ -144,7 +154,8 @@ class Cube2IccApp:
         heading = ttk.Frame(frame)
         heading.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(heading, text="CUBE → ICC", style="Heading.TLabel").pack(side=tk.LEFT)
-        ttk.Label(heading, text="ベース ICC に LUT を焼き込み、ΔE2000 で検証します").pack(side=tk.LEFT, padx=14)
+        ttk.Label(heading, text="ベース ICC に LUT を焼き込み、ΔE2000 で検証します",
+                  style=DIM_LABEL).pack(side=tk.LEFT, padx=14)
         base = ttk.Frame(frame)
         base.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         base.columnconfigure(1, weight=1)
@@ -152,7 +163,7 @@ class Cube2IccApp:
         search_entry = self.control(ttk.Entry(base, textvariable=self.profile_search),
                                     "normal" if self.all_profile_files else "disabled")
         search_entry.grid(row=0, column=1, sticky="ew")
-        ttk.Label(base, textvariable=self.profile_match_count, foreground="#555555").grid(
+        ttk.Label(base, textvariable=self.profile_match_count, style=DIM_LABEL).grid(
             row=0, column=2, padx=(8, 0), sticky="w")
         ttk.Label(base, text="ベース ICC").grid(row=1, column=0, padx=(0, 12), pady=(6, 0))
         self.base_combo = self.control(ttk.Combobox(base, textvariable=self.base_icc_path,
@@ -166,13 +177,13 @@ class Cube2IccApp:
         queue_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 10))
         queue_frame.columnconfigure(0, weight=1)
         queue_frame.rowconfigure(1, weight=1)
-        toolbar = ttk.Frame(queue_frame)
+        toolbar = ttk.Frame(queue_frame, style=CARD_FRAME)
         toolbar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
         for label, command in [("ファイルを追加…", self.browse_cubes), ("フォルダーを追加…", self.browse_folder)]:
             self.control(ttk.Button(toolbar, text=label, command=command)).pack(side=tk.LEFT, padx=(0, 6))
         self.control(ttk.Button(toolbar, text="全てクリア", command=self.clear_files)).pack(side=tk.RIGHT)
         self.control(ttk.Button(toolbar, text="選択を削除", command=self.remove_selected)).pack(side=tk.RIGHT, padx=(0, 6))
-        ttk.Label(toolbar, textvariable=self.count_text).pack(side=tk.RIGHT, padx=10)
+        ttk.Label(toolbar, textvariable=self.count_text, style="Card.TLabel").pack(side=tk.RIGHT, padx=10)
         self.tree = ttk.Treeview(queue_frame, columns=("name", "folder", "status", "output"),
                                  show="headings", selectmode="extended", height=6)
         for column, label, width, stretch in [
@@ -185,11 +196,11 @@ class Cube2IccApp:
         scroll_y = ttk.Scrollbar(queue_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scroll_y.grid(row=1, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scroll_y.set)
-        for tag, color in {"success": "#237242", "error": "#b42318", "skipped": "#776233", "cancelled": "#666666"}.items():
+        for tag, color in STATUS_COLORS.items():
             self.tree.tag_configure(tag, foreground=color)
         self.tree.bind("<Delete>", lambda _event: self.remove_selected())
         ttk.Label(queue_frame, textvariable=self.metadata_text, wraplength=980,
-                  foreground="#555555").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+                  style="CardDim.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         notebook = ttk.Notebook(frame)
         notebook.grid(row=3, column=0, sticky="ew", pady=(0, 10))
@@ -205,16 +216,26 @@ class Cube2IccApp:
         ttk.Label(progress_frame, textvariable=self.progress_text, width=12, anchor="e").grid(row=0, column=1)
         buttons = ttk.Frame(frame)
         buttons.grid(row=5, column=0, sticky="ew", pady=(0, 8))
-        self.generate_button = self.control(ttk.Button(buttons, text="一括変換を開始", command=self.start_generation))
+        self.generate_button = self.control(ttk.Button(buttons, text="一括変換を開始",
+                                                       command=self.start_generation,
+                                                       style=PRIMARY_BUTTON))
         self.generate_button.pack(side=tk.LEFT, ipadx=20, ipady=3)
         self.cancel_button = ttk.Button(buttons, text="中止", command=self.cancel, state="disabled")
         self.cancel_button.pack(side=tk.LEFT, padx=(8, 12), ipady=3)
         ttk.Label(buttons, text="Capture One 側では「ICC = 生成プロファイル / Curve = Linear Response」で使用してください。",
-                  wraplength=560, justify=tk.LEFT).pack(side=tk.LEFT, fill=tk.X)
+                  wraplength=560, justify=tk.LEFT, style=DIM_LABEL).pack(side=tk.LEFT, fill=tk.X)
         log_frame = ttk.LabelFrame(frame, text="処理ログ", padding=5)
         log_frame.grid(row=6, column=0, sticky="nsew", pady=(0, 7))
-        self.log_area = scrolledtext.ScrolledText(log_frame, height=6, state="disabled", wrap=tk.WORD)
-        self.log_area.pack(fill=tk.BOTH, expand=True)
+        log_body = ttk.Frame(log_frame, style=CARD_FRAME)
+        log_body.pack(fill=tk.BOTH, expand=True)
+        log_body.columnconfigure(0, weight=1)
+        log_body.rowconfigure(0, weight=1)
+        self.log_area = configure_log_text(tk.Text(log_body, height=6, state="disabled", wrap=tk.WORD))
+        self.log_area.grid(row=0, column=0, sticky="nsew")
+        log_scroll = ttk.Scrollbar(log_body, orient=tk.VERTICAL, command=self.log_area.yview,
+                                   style="Log.TScrollbar")
+        log_scroll.grid(row=0, column=1, sticky="ns")
+        self.log_area.configure(yscrollcommand=log_scroll.set)
         ttk.Label(frame, textvariable=self.status_text, anchor="w", wraplength=1000).grid(row=7, column=0, sticky="ew")
 
     def _basic_tab(self, notebook):
@@ -240,7 +261,7 @@ class Cube2IccApp:
                                      variable=self.validate)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
         ttk.Label(tab, text=" Alliance などの Rec.709 系 LUT は「Rec.709 Gamma 2.4」推奨。sRGB 専用 LUT は「sRGB」。"
                             "ヘッダの #Input: コメントは参考情報であり、トランスファーは自動決定されません。",
-                  wraplength=960, foreground="#555555").grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+                  wraplength=960, style=DIM_LABEL).grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
         return tab
 
     def _advanced_tab(self, notebook):
