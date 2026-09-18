@@ -1,6 +1,6 @@
 # C1LUT — 計測可能な CUBE → ICC 変換
 
-`.cube` 3D LUT を Capture One 用のカメラ入力 ICC に焼き込むツールです。ベース ICC 注入の設計を維持しつつ、**色管理パイプラインとして数値検証できる実装** になっています。
+`.cube` 3D LUT を Capture One 用カメラ入力 ICC に焼き込む、**数値検証できる色管理パイプライン** です。ベース ICC のキャリブレーションを保持したまま LUT の Look を反映します。
 
 ```
 Camera RGB
@@ -14,21 +14,21 @@ Capture One  (Curve = Linear Response)
 
 生成した ICC が元の LUT とどれだけ一致するかを **ΔE2000 レポート** として数値で出力します。
 
-## 旧バージョン (1.x) からの主な改良点
+## 設計の要点
 
-| 項目 | 旧バージョン (1.x) | C1LUT |
-| --- | --- | --- |
-| PCS / CLUT 整合 | 常に Lab CLUT、フォールバック時はヘッダと不一致 | ベース ICC ヘッダの PCS (`Lab `/`XYZ `) を判定し一致させる |
-| 16bit Lab エンコード | L\*=100 → 0xFFFF (誤り) | L\*=100 → **0xFF00 (65280)** の正規 legacy エンコード |
-| Profile ID | ベースの ID が残存 (無効) | ICC 規定の MD5 再計算 |
-| A2B intent | 相対色度でサンプリングし A2B0 へ書き込み | `--icc-intent` でサンプリングと書き込み先を一致 (perceptual / relative / saturation / **mirror**) |
-| Base ICC サンプリング | 8bit RGB に量子化 | **float64** で mft2 / mAB を直接評価 (`--cms-precision float`)、lcms2 / 8bit も選択可 |
-| CUBE パーサー | TITLE / LUT_3D_SIZE のみ | DOMAIN_MIN/MAX、1D shaper、厳密な検証 (行数・NaN・不明ディレクティブ) |
-| リサンプリング | 最近傍インデックス選択 | native グリッドのまま **四面体補間** で評価 |
-| Rec.709 と sRGB | 同一視 | 色域とトランスファーを分離 (`Rec.709 Gamma 2.4` / `sRGB` / `Rec.709 OETF` / `BT.1886` / Log 系) |
-| Film Standard 補正 | 常に 1.25+atan を適用 | デフォルトは無補正 (Linear Response)。旧挙動は `--c1-curve film-standard-legacy` で opt-in |
-| ガンマ補正 | `--gamma` の意味が曖昧 | `--midtone-gamma`(別名 `--gamma`)。1.0 = 補正なし |
-| 検証 | なし | 書き出した ICC ファイルを実測する **ΔE2000 レポート** (mean / median / p95 / p99 / max + 領域別) |
+| 項目 | 内容 |
+| --- | --- |
+| PCS / CLUT 整合 | ベース ICC ヘッダの PCS (`Lab `/`XYZ `) を判定して CLUT エンコードを一致させる |
+| 16bit Lab エンコード | L\*=100 → **0xFF00 (65280)** の ICC legacy エンコード |
+| Profile ID | ICC 規定の MD5 を常に再計算 |
+| A2B intent | `--icc-intent` でサンプリングと書き込み先タグを一致 (perceptual / relative / saturation / mirror) |
+| Base ICC サンプリング | 8bit 量子化なしの **float64** 直接評価 (mft2 / mAB / matrix-shaper)。lcms2 / 8bit も選択可 |
+| CUBE パーサー | DOMAIN_MIN/MAX、1D shaper、行数・NaN・不明ディレクティブの厳密な検証 |
+| LUT 評価 | native グリッドのまま **四面体補間** (trilinear / nearest も選択可) |
+| 色空間モデル | 色域とトランスファーを分離 (`Rec.709 Gamma 2.4` / `sRGB` / `Rec.709 OETF` / `BT.1886` / Log 系) |
+| Film Standard 補正 | 既定は無補正 (Linear Response)。`--c1-curve film-standard-legacy` で opt-in |
+| 中間調補正 | `--midtone-gamma`。1.0 = 補正なし |
+| 検証 | 書き出した ICC ファイルを実測する **ΔE2000 レポート** (mean / median / p95 / p99 / max + 領域別 + ネイティブlcms2独立検証) |
 
 ## 使い方 (CLI)
 
@@ -49,11 +49,11 @@ LeicaSL601-LC_Alliance.icc
 LeicaSL601-LC_Alliance.validation.json
 ```
 
-出力ファイル名は旧バージョン (1.x) と同じ `<カメラ名>-<LUT名>.icc` 形式です。カメラ名はベース ICC の desc/ファイル名から、LUT名は CUBE のファイル名から取ります。
+出力ファイル名は `<カメラ名>-<LUT名>.icc` 形式です。カメラ名はベース ICC の desc/ファイル名から、LUT名は CUBE のファイル名から取ります。
 
 ### カメラとの紐づけ（desc モード）
 
-Capture One のプロファイル一覧に表示される名前は **ICC 内部の `desc` タグ**で、ファイル名ではありません。Capture One はこの文字列でカメラプロファイルとの紐づけを行うため、既定 (`--desc-mode base`) では **ベース ICC の desc をそのまま継承**します（1.x と同じ動作。例: `FujiXT5-Generic`）。この場合、リスト上の表示名はベースと同一になりますが、ファイル名で Look を区別できます。
+Capture One のプロファイル一覧に表示される名前は **ICC 内部の `desc` タグ**で、ファイル名ではありません。Capture One はこの文字列でカメラプロファイルとの紐づけを行うため、既定 (`--desc-mode base`) では **ベース ICC の desc をそのまま継承**します（例: `FujiXT5-Generic`）。この場合、リスト上の表示名はベースと同一になりますが、ファイル名で Look を区別できます。
 
 Look ごとに別々の名前で表示したい場合は `--desc-mode look` を指定すると、Capture One 純正と同じ命名規則 `<カメラ名>-<LUT名>`（例: `FujiXT5-Gold200`）で desc を書きます。GUI では詳細設定タブの「プロファイル名（desc）」で切り替えられます。
 
@@ -63,7 +63,7 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 | `--input-gamut` / `--input-transfer` | LUT の入力色域 / トランスファー。既定 `sRGB` / `sRGB` |
 | `--output-gamut` / `--output-transfer` | LUT の出力色域 / トランスファー。既定は入力と同じ |
 | `--preset` | 入出力をまとめて設定する簡易プリセット (`Rec.709 Gamma 2.4`, `sRGB`, `Rec.709 OETF`, `BT.1886`, `ARRI LogC3/4`, `Sony S-Log3`, `Fujifilm F-Log/F-Log2`, `Panasonic V-Log` など) |
-| `--c1-curve` | `linear` (既定・無補正) / `film-standard-legacy` (旧バージョンの 1.25+atan) |
+| `--c1-curve` | `linear` (既定・無補正) / `film-standard-legacy` (経験則的な 1.25+atan 近似) |
 | `--desc-mode` | `base` (既定・ベースICCのdescを継承してカメラ紐づけを維持) / `look` (`カメラ名-LUT名` で表示を区別) |
 | `--midtone-gamma` | 追加の中間調補正。既定 `1.0` (補正なし) |
 | `--lut-interpolation` | `tetrahedral` (既定) / `trilinear` / `nearest` |
@@ -74,12 +74,12 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 | `--lut-domain-policy` | CLUT ドメイン外: `clamp` / `error` |
 | `--cms-precision` | `float` (既定) / `lcms` / `8bit` |
 | `--validate` | ΔE2000 検証を実行し JSON を保存 (ネイティブlcms2による独立検証を含む) |
-| `--compare-legacy` | 検証時に legacy (1.x) 相当設定との誤差比較も追加 |
+| `--compare-legacy` | 検証時に legacy 相当設定との誤差比較も追加 |
 | `--validation-samples` | ランダム検証サンプル数 (既定 100000、固定シードで再現可能)。`0` で格子点のみ |
 | `--output-dir` / `--existing` | 保存先 / `rename` `skip` `overwrite` (CLI 既定は `overwrite`) |
 | `--probe-intent OUT.icc` | Capture One がどの A2B タグを使うか調べるプローブ ICC を生成 |
 
-旧来の `--target-gamut` / `--target-curve` / `--lut-output-gamut` / `--lut-output-curve` / `--gamma` は警告付きエイリアスとして動作します。
+次のオプション名は警告付きのエイリアスとして動作します: `--target-gamut` / `--target-curve` / `--lut-output-gamut` / `--lut-output-curve` / `--gamma`。
 
 ## 保存の保護とベースプロファイルの対応
 
@@ -117,7 +117,7 @@ Validation report
 
 - 合格 (`PASS`) には **独立検証の成功が必須**です。ネイティブlcms2が利用できない場合、判定は `UNVERIFIED` になり `PASS` にはなりません (JSON の `validation_status` と `independent_error` を参照)
 - `--validation-samples 0` は格子点のみの検証、負の値は CLI でエラーになります
-- `--compare-legacy` を追加すると、legacy (1.x) 相当設定と正確基準の差もレポートに記録されます
+- `--compare-legacy` を追加すると、legacy 相当設定と正確基準の差もレポートに記録されます
 
 合格目標 (spec §22): identity LUT は mean<0.10 / p95<0.25 / max<1.0、creative LUT は mean<0.25 / p95<0.75 / max<2.0。33³ CLUT の制約上、広色域カメラプロファイルでは色域境界のクランプ部で誤差が集中することがあります (レポートの domain 統計と `near_gamut_boundary` で確認できます)。
 
@@ -136,13 +136,13 @@ python main.py            (引数なしで GUI が開く)
 
 ## Legacy モード
 
-旧バージョンと同じ見た目が必要な場合:
+Film Standard 風の見た目が必要な場合:
 
 ```powershell
 python main.py film.cube --base-icc camera.icc --legacy
 ```
 
-8bit ImageCms サンプリング、三線形補間、33³ への再サンプル、固定 Film Standard 補正、CAT02 を再現します。ただし PCS / Profile ID など ICC として不正になる部分も C1LUT では安全側に修正されます。旧CLI互換として、`--legacy` 時は旧プリセット名 (`LogC3` など) も `--preset` で受け付け、出力エンコーディングの既定が旧版どおり sRGB になります (8bit モードの rendering intent も指定 A2B タグと一致するよう修正済み)。
+8bit CMS サンプリング、三線形補間、33³ への再サンプル、固定 Film Standard 補正、CAT02 を使う互換経路で変換します。ただし PCS / Profile ID など ICC として不正になる部分は安全側に修正されます。`--legacy` 時は `LogC3` などの短縮プリセット名も `--preset` で受け付け、出力エンコーディングの既定は sRGB になります (8bit モードの rendering intent も指定 A2B タグと一致します)。
 
 ## ソースから実行 / ビルド
 
@@ -207,7 +207,7 @@ C1LUT/
 │  ├─ validation.py   ΔE2000 検証 (内蔵 + ネイティブlcms2独立検証)
 │  ├─ convert.py      1 ファイル変換オーケストレーション
 │  ├─ files.py        保存先保護・衝突解決・アトミック書き込み
-│  ├─ presets.py      簡易プリセット (旧名称エイリアス込み)
+│  ├─ presets.py      簡易プリセット (短縮名エイリアス込み)
 │  └─ capture_one.py  プロファイル探索 / intent プローブ / インストール
 ├─ native/            lcms2.dll とライセンス (EXE に同梱)
 ├─ tools/             fetch_lcms.py (チェックサム検証付き DLL 取得)
@@ -220,3 +220,7 @@ C1LUT/
 - 33³ 以外の ICC グリッドは Capture One 実機での互換性確認が未済
 - Alliance の `#Input: Rec.709` のようにヘッダコメントがあってもトランスファー (Gamma 2.4 / BT.1886 / OETF…) は自動決定しません。A/B 比較 (`Rec.709 Gamma 2.4` vs `sRGB` など) で確定してください
 - Leica SL601 + Alliance LUT の Capture One 実描画比較、clean Windows VM での EXE 動作確認は未実施
+
+## 商標について
+
+"Capture One" は Capture One A/S の商標です。本プロジェクトは Capture One A/S とは無関係であり、公認・後援・スポンサーを受けていません。Leica・Sony・Fujifilm・Panasonic・ARRI その他の会社名・製品名・機能名 (S-Log3、LogC3、F-Log、V-Log 等) も各社の商標または登録商標であり、対応関係を説明する目的でのみ使用しています。
