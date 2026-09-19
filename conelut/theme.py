@@ -118,6 +118,20 @@ def apply_dark_title_bar(root: tk.Tk) -> bool:
         return False
 
 
+def ui_scale(root: tk.Misc) -> float:
+    """Display scale factor: 1.0 at 96 DPI, 2.0 at 192 DPI, ...
+
+    Point-based fonts follow ``tk scaling`` automatically, but the theme's
+    pixel options (arrow size, scrollbar width, paddings, indicator size)
+    do not - they must be multiplied by this factor so touch targets stay
+    operable on high-DPI displays.
+    """
+    try:
+        return min(3.0, max(1.0, float(root.tk.call("tk", "scaling")) / (96.0 / 72.0)))
+    except Exception:
+        return 1.0
+
+
 def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
     """Recolour the whole widget set; returns the configured style."""
     style.theme_use("clam")
@@ -125,6 +139,12 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
     # Re-apply once the window is mapped; DWM needs a realised frame on some
     # builds to pick the attributes up.
     root.after(120, lambda: apply_dark_title_bar(root))
+
+    scale = ui_scale(root)
+
+    def px(base: int) -> int:
+        """Scale a 96-DPI pixel value to this display."""
+        return max(base, int(round(base * scale)))
 
     root.configure(background=WINDOW)
     style.configure(".", background=WINDOW, foreground=TEXT, bordercolor=BORDER,
@@ -144,7 +164,8 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
     style.configure("Heading.TLabel", font=(FONT, 18, "bold"), foreground=TEXT)
 
     style.configure("TButton", background=FIELD, foreground=TEXT, bordercolor=BORDER,
-                    lightcolor=FIELD, darkcolor=FIELD, relief="flat", padding=(12, 5),
+                    lightcolor=FIELD, darkcolor=FIELD, relief="flat",
+                    padding=(px(12), px(5)),
                     focusthickness=1, focuscolor=BORDER, font=(FONT, 10))
     style.map("TButton",
               background=[("pressed", FIELD_ACTIVE), ("active", FIELD_ACTIVE),
@@ -153,7 +174,8 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
               foreground=[("disabled", TEXT_DIM)])
     style.configure(PRIMARY_BUTTON, background=ACCENT, foreground=ACCENT_TEXT,
                     bordercolor=ACCENT, lightcolor=ACCENT, darkcolor=ACCENT,
-                    font=(FONT, 10, "bold"), padding=(16, 6), focuscolor=ACCENT_HOVER)
+                    font=(FONT, 10, "bold"), padding=(px(16), px(6)),
+                    focuscolor=ACCENT_HOVER)
     style.map(PRIMARY_BUTTON,
               background=[("pressed", ACCENT_HOVER), ("active", ACCENT_HOVER),
                           ("disabled", "#5c4322")],
@@ -162,7 +184,7 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
 
     style.configure("TEntry", fieldbackground=FIELD, foreground=TEXT,
                     insertcolor=TEXT, bordercolor=BORDER, lightcolor=FIELD,
-                    darkcolor=FIELD, padding=3,
+                    darkcolor=FIELD, padding=px(4),
                     selectbackground=SEL_BG, selectforeground=TEXT)
     style.map("TEntry", fieldbackground=[("focus", FIELD_ACTIVE), ("disabled", PANEL)],
               foreground=[("disabled", TEXT_DIM)],
@@ -170,7 +192,8 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
 
     style.configure("TCombobox", fieldbackground=FIELD, background=FIELD,
                     foreground=TEXT, arrowcolor=TEXT_DIM, bordercolor=BORDER,
-                    lightcolor=FIELD, darkcolor=FIELD, arrowsize=12, padding=3,
+                    lightcolor=FIELD, darkcolor=FIELD, arrowsize=px(15),
+                    padding=px(4),
                     selectbackground=SEL_BG, selectforeground=TEXT)
     style.map("TCombobox",
               fieldbackground=[("readonly", FIELD), ("disabled", PANEL),
@@ -186,18 +209,20 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
     root.option_add("*TCombobox*Listbox.activeForeground", ACCENT)
     root.option_add("*TCombobox*Listbox.borderWidth", 0)
     root.option_add("*TCombobox*Listbox.highlightThickness", 0)
+    root.option_add("*TCombobox*Listbox.font", (FONT, 10))
+    root.option_add("*TCombobox*Listbox.pady", px(2))
 
     style.configure("TNotebook", background=WINDOW, borderwidth=0, tabmargins=(6, 6, 6, 0))
     style.configure("TNotebook.Tab", background=WINDOW, foreground=TEXT_DIM,
-                    borderwidth=0, padding=(16, 7), font=(FONT, 10))
+                    borderwidth=0, padding=(px(16), px(7)), font=(FONT, 10))
     style.map("TNotebook.Tab",
               background=[("selected", PANEL)],
               foreground=[("selected", ACCENT), ("active", TEXT)])
 
     style.configure("Treeview", background=FIELD, foreground=TEXT, fieldbackground=FIELD,
-                    borderwidth=0, rowheight=26, lightcolor=FIELD, darkcolor=FIELD)
+                    borderwidth=0, rowheight=px(28), lightcolor=FIELD, darkcolor=FIELD)
     style.configure("Treeview.Heading", background=PANEL, foreground=TEXT_DIM,
-                    relief="flat", padding=(6, 4), font=(FONT, 10, "bold"),
+                    relief="flat", padding=(px(6), px(4)), font=(FONT, 10, "bold"),
                     borderwidth=0, lightcolor=PANEL, darkcolor=PANEL)
     style.map("Treeview",
               background=[("selected", SEL_BG)],
@@ -206,30 +231,32 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
 
     style.configure("TProgressbar", troughcolor=FIELD, background=ACCENT,
                     lightcolor=ACCENT, darkcolor=ACCENT, borderwidth=0,
-                    thickness=10)
+                    thickness=px(10))
     style.map("TProgressbar", background=[("disabled", FIELD)])
 
     style.configure("TCheckbutton", background=WINDOW, foreground=TEXT, focuscolor=WINDOW,
-                    indicatorcolor=FIELD, padding=2)
+                    indicatorcolor=FIELD, padding=px(4),
+                    indicatorsize=px(15), indicatorrelief="flat")
     style.map("TCheckbutton",
               background=[("active", WINDOW)],
               indicatorcolor=[("selected", ACCENT), ("!selected", FIELD),
                               ("alternate", FIELD_ACTIVE)])
 
+    style.configure("TScrollbar", width=px(16), arrowsize=px(14))
     style.configure("Vertical.TScrollbar", troughcolor=WINDOW, background=FIELD,
                     bordercolor=WINDOW, lightcolor=FIELD, darkcolor=FIELD,
-                    arrowcolor=TEXT_DIM, gripcount=0)
+                    arrowcolor=TEXT_DIM, gripcount=0, width=px(16), arrowsize=px(14))
     style.map("Vertical.TScrollbar", background=[("active", FIELD_ACTIVE)])
     style.configure("Horizontal.TScrollbar", troughcolor=WINDOW, background=FIELD,
                     bordercolor=WINDOW, lightcolor=FIELD, darkcolor=FIELD,
-                    arrowcolor=TEXT_DIM, gripcount=0)
+                    arrowcolor=TEXT_DIM, gripcount=0, arrowsize=px(14))
 
     # Classic tk widgets used directly (log Text): derive the log scrollbar
     # style from the styled Vertical.TScrollbar so it keeps a valid layout.
     style.layout("Vertical.Log.TScrollbar", style.layout("Vertical.TScrollbar"))
     style.configure("Vertical.Log.TScrollbar", troughcolor=PANEL, background=FIELD,
                     bordercolor=PANEL, lightcolor=FIELD, darkcolor=FIELD,
-                    arrowcolor=TEXT_DIM, gripcount=0)
+                    arrowcolor=TEXT_DIM, gripcount=0, width=px(16), arrowsize=px(14))
     return style
 
 
