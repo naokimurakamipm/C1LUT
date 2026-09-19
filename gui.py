@@ -72,7 +72,7 @@ DESC_MODE_LABELS = {
 class Cube2IccApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("C-One LUT — CUBE → ICC")
+        root.title("C-One LUT")
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.events: Queue = Queue()
         self.cancel_event = threading.Event()
@@ -152,9 +152,7 @@ class Cube2IccApp:
         frame.rowconfigure(6, weight=1)
         heading = ttk.Frame(frame)
         heading.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(heading, text="CUBE → ICC", style="Heading.TLabel").pack(side=tk.LEFT)
-        ttk.Label(heading, text="ベース ICC に LUT を焼き込み、ΔE2000 で検証します",
-                  style=DIM_LABEL).pack(side=tk.LEFT, padx=14)
+        ttk.Label(heading, text="C-One LUT", style="Heading.TLabel").pack(side=tk.LEFT)
         base = ttk.Frame(frame)
         base.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         base.columnconfigure(1, weight=1)
@@ -184,7 +182,7 @@ class Cube2IccApp:
         self.control(ttk.Button(toolbar, text="選択を削除", command=self.remove_selected)).pack(side=tk.RIGHT, padx=(0, 6))
         ttk.Label(toolbar, textvariable=self.count_text, style="Card.TLabel").pack(side=tk.RIGHT, padx=10)
         self.tree = ttk.Treeview(queue_frame, columns=("name", "folder", "status", "output"),
-                                 show="headings", selectmode="extended", height=6)
+                                 show="headings", selectmode="extended", height=5)
         for column, label, width, stretch in [
             ("name", "CUBE ファイル", 230, True), ("folder", "入力フォルダー", 240, True),
             ("status", "状態", 80, False), ("output", "出力先", 330, True),
@@ -229,7 +227,7 @@ class Cube2IccApp:
         log_body.pack(fill=tk.BOTH, expand=True)
         log_body.columnconfigure(0, weight=1)
         log_body.rowconfigure(0, weight=1)
-        self.log_area = configure_log_text(tk.Text(log_body, height=6, state="disabled", wrap=tk.WORD))
+        self.log_area = configure_log_text(tk.Text(log_body, height=4, state="disabled", wrap=tk.WORD))
         self.log_area.grid(row=0, column=0, sticky="nsew")
         log_scroll = ttk.Scrollbar(log_body, orient=tk.VERTICAL, command=self.log_area.yview,
                                    style="Log.TScrollbar")
@@ -255,9 +253,6 @@ class Cube2IccApp:
         self.control(ttk.Entry(tab, textvariable=self.midtone_gamma)).grid(row=1, column=1, sticky="ew", pady=4)
         self.control(ttk.Checkbutton(tab, text="ΔE2000 検証を実行してレポートを保存する（推奨）",
                                      variable=self.validate)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        ttk.Label(tab, text=" Alliance などの Rec.709 系 LUT は「Rec.709 Gamma 2.4」推奨。sRGB 専用 LUT は「sRGB」。"
-                            "ヘッダの #Input: コメントは参考情報であり、トランスファーは自動決定されません。",
-                  wraplength=960, style=DIM_LABEL).grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
         return tab
 
     def _advanced_tab(self, notebook):
@@ -311,14 +306,13 @@ class Cube2IccApp:
     def _fit_window(self):
         """Size the default window so every control, buttons included, is visible.
 
-        The previous fixed 1080x860 clipped the bottom rows on DPI-scaled
-        displays: the default size now follows the layout's requested size
-        (clamped to the screen), and the vertical minimum prevents shrinking
-        the window back into a clipped state.
+        The default size follows the layout's requested size (clamped to the
+        screen), and the vertical minimum prevents shrinking the window back
+        into a clipped state.
         """
         self.root.update_idletasks()
-        width = max(self.root.winfo_reqwidth(), 1000)
-        height = max(self.root.winfo_reqheight(), 700)
+        width = max(self.root.winfo_reqwidth(), 960)
+        height = max(self.root.winfo_reqheight(), 620)
         width = min(width + 24, self.root.winfo_screenwidth() - 40)
         height = min(height + 24, self.root.winfo_screenheight() - 120)
         self.root.geometry(f"{width}x{height}")
