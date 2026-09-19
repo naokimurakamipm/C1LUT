@@ -16,6 +16,54 @@ APP_NAME = "COneLUT"
 ENTRY_POINT = "gui.py"
 ICON = "art/COneLUT.ico"
 
+
+def version_resource():
+    """Windows VERSIONINFO file generated from conelut.__version__.
+
+    Without it the exe carries no version resource: Explorer's details tab is
+    blank and the Inno Setup script's GetVersionNumbersString() returns an
+    empty string (the installer came out as "COneLUT-Setup-.exe").
+    """
+    sys.path.insert(0, SPECPATH)
+    from conelut import __version__
+
+    major, minor, *rest = (int(part) for part in __version__.split("."))
+    patch = rest[0] if rest else 0
+    lines = [
+        "# UTF-8",
+        "VSVersionInfo(",
+        "  ffi=FixedFileInfo(",
+        f"    filevers=({major}, {minor}, {patch}, 0),",
+        f"    prodvers=({major}, {minor}, {patch}, 0),",
+        "    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0,",
+        "    date=(0, 0),",
+        "  ),",
+        "  kids=[",
+        "    StringFileInfo(",
+        "      [",
+        "        StringTable(",
+        "          '040904B0',",
+        "          [",
+        "            StringStruct('CompanyName', 'Naoki Murakami'),",
+        "            StringStruct('FileDescription', 'C-One LUT - CUBE LUT to ICC for Capture One'),",
+        f"            StringStruct('FileVersion', '{__version__}'),",
+        f"            StringStruct('InternalName', '{APP_NAME}'),",
+        f"            StringStruct('OriginalFilename', '{APP_NAME}.exe'),",
+        "            StringStruct('ProductName', 'C-One LUT'),",
+        f"            StringStruct('ProductVersion', '{__version__}'),",
+        "          ]",
+        "        )",
+        "      ]",
+        "    ),",
+        "    VarFileInfo([VarStruct('Translation', [1033, 1200])]),",
+        "  ],",
+        ")",
+    ]
+    path = pathlib.Path(SPECPATH) / "build" / "version_info.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
 # Runtime assets shipped with the app: the native lcms2 CMM used by the
 # independent dE2000 verification, plus its licence and provenance records.
 RUNTIME_BINARIES = [("native/lcms2.dll", "native")]
@@ -68,6 +116,7 @@ def build():
         console=False,
         upx=True,
         icon=ICON,
+        version=version_resource(),
     )
     app_folder = COLLECT(
         executable,

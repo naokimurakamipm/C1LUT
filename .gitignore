@@ -5,3 +5,6 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+
+# Installer build output (local artifact, never pushed)
+installer/Output/

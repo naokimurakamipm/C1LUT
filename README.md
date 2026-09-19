@@ -228,6 +228,22 @@ Windows アプリのビルド:
 
 生成物は `dist\COneLUT\COneLUT.exe`。配布時は `dist\COneLUT` フォルダー全体を ZIP にまとめます (lcms2.dll と MIT ライセンス表示を含みます)。
 
+### インストーラーのビルド
+
+配布用セットアップexe (スタートメニューショートカット・アンインストーラー・GPLv3ライセンス表示付き、ユーザー単位インストールでUAC不要) は Inno Setup で作ります。初回のみ:
+
+```powershell
+winget install JRSoftware.InnoSetup
+```
+
+ビルド (dist が無ければ先にアプリをビルドします):
+
+```powershell
+.\build_installer.bat
+```
+
+生成物は `installer\Output\COneLUT-Setup-<バージョン>.exe`。バージョンは EXE のリソース (= `conelut/__init__.py` の `__version__`) から自動取得します。**セットアップexeはローカル成果物で `.gitignore` によりリポジトリに入りません**。配布するときは GPLv3 の上位互換の範囲で自由に配布できます。
+
 アプリアイコン(3D LUT の RGB キューブ)は `art/make_icon.py` で生成しています。デザインを変えたい場合はスクリプト内の色・形状を編集して再生成し、ビルドし直してください:
 
 ```powershell
