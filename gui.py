@@ -187,11 +187,12 @@ class Cube2IccApp:
         self.control(ttk.Button(toolbar, text="全てクリア", command=self.clear_files)).pack(side=tk.RIGHT)
         self.control(ttk.Button(toolbar, text="選択を削除", command=self.remove_selected)).pack(side=tk.RIGHT, padx=(0, 6))
         ttk.Label(toolbar, textvariable=self.count_text, style="Card.TLabel").pack(side=tk.RIGHT, padx=10)
-        self.tree = ttk.Treeview(queue_frame, columns=("name", "folder", "status", "output"),
+        self.tree = ttk.Treeview(queue_frame, columns=("name", "folder", "status", "verify", "output"),
                                  show="headings", selectmode="extended", height=5)
         for column, label, width, stretch in [
-            ("name", "CUBE ファイル", 230, True), ("folder", "入力フォルダー", 240, True),
-            ("status", "状態", 80, False), ("output", "出力先", 330, True),
+            ("name", "CUBE ファイル", 210, True), ("folder", "入力フォルダー", 210, True),
+            ("status", "状態", 80, False), ("verify", "検証 (ΔE2000 平均)", 170, False),
+            ("output", "出力先", 300, True),
         ]:
             self.tree.heading(column, text=label)
             self.tree.column(column, width=width, minwidth=60, stretch=stretch)
@@ -412,7 +413,7 @@ class Cube2IccApp:
             self.next_row += 1
             self.paths[row] = path
             self.path_rows[key] = row
-            self.tree.insert("", tk.END, iid=row, values=(path.name, str(path.parent), "待機", ""))
+            self.tree.insert("", tk.END, iid=row, values=(path.name, str(path.parent), "待機", "", ""))
             added += 1
         self.count_text.set(f"{len(self.paths)} ファイル")
         if added:
@@ -538,7 +539,7 @@ class Cube2IccApp:
         self.progress.configure(maximum=len(paths), value=0)
         self.progress_text.set(f"0 / {len(paths)}")
         for row, path in self.paths.items():
-            self.tree.item(row, values=(path.name, str(path.parent), "待機", ""), tags=())
+            self.tree.item(row, values=(path.name, str(path.parent), "待機", "", ""), tags=())
         self.log(f"\n{len(paths)} ファイルの変換を開始します。")
         self.log(f"ベース ICC: {base.path}  (PCS: {base.pcs.decode()})")
         self.log(f"CUBE 入力: {params.input_gamut} / {params.input_transfer}  |  "
@@ -694,8 +695,10 @@ class Cube2IccApp:
                                    key=lambda value: {"PASS": 0, "UNVERIFIED": 1, "REVIEW": 2}.get(value, 1))
                 self.log(f"検証サマリ: {validated} ファイル / {worst_status}  |  "
                          f"最悪 平均 ΔE2000 {worst_mean:.4f}・最大 {worst_max:.4f}")
+                summary += f"｜検証 {worst_status}: 最悪 平均 {worst_mean:.4f}・最大 {worst_max:.4f}"
             if report_path is not None:
-                self.status_text.set(f"処理終了: {summary}（レポート保存済み）")
+                summary += "（レポート保存済み）"
+            self.status_text.set(f"処理終了: {summary}")
             return
         _kind, path, output, status, message, _index, total, summary = event
         row = self.path_rows.get(self.path_key(Path(path))) if path is not None else None
@@ -711,6 +714,7 @@ class Cube2IccApp:
             if row is not None:
                 self.tree.set(row, "status", label)
                 self.tree.set(row, "output", str(output or ""))
+                self.tree.set(row, "verify", _verify_cell(summary))
                 self.tree.item(row, tags=(status,))
             self.progress.configure(value=self.completed)
             self.progress_text.set(f"{self.completed} / {total}")
@@ -740,6 +744,14 @@ class Cube2IccApp:
                     return
         finally:
             self.root.after(80, self.poll_events)
+
+
+def _verify_cell(summary: dict | None) -> str:
+    """Compact number for the queue table's 検証 column, e.g. '0.0372 → PASS'."""
+    if not summary or summary.get("mean") is None:
+        return "—" if summary is None else ""
+    status = summary.get("validation_status", "")
+    return f"{summary['mean']:.4f} → {status}" if status else f"{summary['mean']:.4f}"
 
 
 def _scan_profile_files(directory: Path) -> list[str]:

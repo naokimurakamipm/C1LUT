@@ -65,6 +65,9 @@ def test_threaded_conversion_completes(tk_root, tmp_path):
     assert "完了 1" in status, status
     row = next(iter(app.path_rows.values()))
     assert app.tree.item(row, "values")[2] == "完了"
+    # The queue table shows the verification numbers right after conversion.
+    verify = app.tree.set(row, "verify")
+    assert "→" in verify and verify.endswith("PASS")
     outputs = list((tmp_path / "out").glob("*.icc"))
     reports = list((tmp_path / "out").glob("COneLUT-run-*.json"))
     assert len(outputs) == 1

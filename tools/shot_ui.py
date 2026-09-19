@@ -69,8 +69,11 @@ def main() -> None:
             rows = app.tree.get_children()
             if rows:
                 app.tree.set(rows[0], "status", "完了")
+                app.tree.set(rows[0], "verify", "0.0019 → PASS")
                 app.tree.set(rows[0], "output", r"ICC\LeicaSL601-Gold200.icc")
                 app.tree.item(rows[0], tags=("success",))
+                app.tree.set(rows[1], "status", "完了")
+                app.tree.set(rows[1], "verify", "0.0022 → PASS")
             app.progress.configure(maximum=2, value=2)
             app.progress_text.set("2 / 2")
             app.status_text.set("処理終了: 完了 2 / エラー 0 / スキップ 0 / 中止 0（レポート保存済み）")
