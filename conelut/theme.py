@@ -71,9 +71,60 @@ def enable_high_dpi() -> bool:
         return False
 
 
+def apply_dark_title_bar(root: tk.Tk) -> bool:
+    """Paint the native window frame in the palette (Windows 10 1809+ / 11).
+
+    Windows draws a white title bar by default even for dark apps. DWM
+    immersive dark mode switches the frame to dark; on Windows 11 the exact
+    caption/border/text colours can be set on top of that. Returns True when
+    at least the generic dark mode was applied.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        dwmapi = ctypes.WinDLL("dwmapi")
+        hwnd = ctypes.windll.user32.GetParent(root.winfo_id()) or root.winfo_id()
+        hwnd = wintypes.HWND(hwnd)
+
+        def set_dword(attribute: int, value: int) -> int:
+            return dwmapi.DwmSetWindowAttribute(
+                hwnd, wintypes.DWORD(attribute),
+                ctypes.byref(wintypes.DWORD(value)), ctypes.sizeof(wintypes.DWORD))
+
+        def set_color(attribute: int, hex_color: str) -> int:
+            r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+            colorref = wintypes.COLORREF(b | (g << 8) | (r << 16))
+            return dwmapi.DwmSetWindowAttribute(
+                hwnd, wintypes.DWORD(attribute),
+                ctypes.byref(colorref), ctypes.sizeof(colorref))
+
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20  # 19 before Windows 10 build 19041
+        DWMWA_BORDER_COLOR = 34
+        DWMWA_CAPTION_COLOR = 35
+        DWMWA_TEXT_COLOR = 36
+
+        applied = set_dword(DWMWA_USE_IMMERSIVE_DARK_MODE, 1)
+        if applied != 0:
+            applied = set_dword(DWMWA_USE_IMMERSIVE_DARK_MODE - 1, 1)  # legacy slot
+        # Exact palette match needs Windows 11 build 22000+; failures are fine.
+        set_color(DWMWA_CAPTION_COLOR, WINDOW)
+        set_color(DWMWA_TEXT_COLOR, TEXT)
+        set_color(DWMWA_BORDER_COLOR, BORDER)
+        return applied == 0
+    except Exception:
+        return False
+
+
 def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
     """Recolour the whole widget set; returns the configured style."""
     style.theme_use("clam")
+    apply_dark_title_bar(root)
+    # Re-apply once the window is mapped; DWM needs a realised frame on some
+    # builds to pick the attributes up.
+    root.after(120, lambda: apply_dark_title_bar(root))
 
     root.configure(background=WINDOW)
     style.configure(".", background=WINDOW, foreground=TEXT, bordercolor=BORDER,
