@@ -213,11 +213,15 @@ def apply_capture_one_style(root: tk.Tk, style: ttk.Style) -> ttk.Style:
     root.option_add("*TCombobox*Listbox.pady", px(2))
 
     style.configure("TNotebook", background=WINDOW, borderwidth=0, tabmargins=(6, 6, 6, 0))
+    tab_padding = (px(16), px(7))
     style.configure("TNotebook.Tab", background=WINDOW, foreground=TEXT_DIM,
-                    borderwidth=0, padding=(px(16), px(7)), font=(FONT, 10))
+                    borderwidth=0, padding=tab_padding, font=(FONT, 10))
+    # clam shrinks the selected tab's padding by default ("6 4 6 2"), which
+    # makes the tab row jump when switching tabs - keep one size for all states.
     style.map("TNotebook.Tab",
               background=[("selected", PANEL)],
-              foreground=[("selected", ACCENT), ("active", TEXT)])
+              foreground=[("selected", ACCENT), ("active", TEXT)],
+              padding=[("selected", tab_padding), ("active", tab_padding)])
 
     style.configure("Treeview", background=FIELD, foreground=TEXT, fieldbackground=FIELD,
                     borderwidth=0, rowheight=px(28), lightcolor=FIELD, darkcolor=FIELD)
