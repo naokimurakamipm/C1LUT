@@ -110,13 +110,12 @@ def test_settings_from_params_covers_all_knobs():
     params = ConversionParams()
     settings = settings_from_params(params, validation_samples=42)
     assert settings["icc_grid"] == params.icc_grid
-    assert settings["capture_one_curve"] == params.c1_curve
     assert settings["validation_samples"] == 42
     assert set(settings) == {
         "input_gamut", "input_transfer", "output_gamut", "output_transfer",
-        "capture_one_curve", "midtone_gamma", "interpolation", "icc_grid", "icc_intent",
+        "midtone_gamma", "interpolation", "icc_grid", "icc_intent",
         "chromatic_adaptation", "domain_policy", "lut_domain_policy", "cms_precision",
-        "legacy_mode", "desc_mode", "validation_samples",
+        "desc_mode", "validation_samples",
     }
 
 

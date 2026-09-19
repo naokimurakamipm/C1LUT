@@ -1,6 +1,6 @@
 """COneLUT — measurable CUBE LUT → ICC pipeline for Capture One.
 
-Design goals (see spec):
+Design goals:
 - Base ICC injection concept kept; Camera RGB is the pipeline origin.
 - ICC PCS / tag semantics strictly consistent with the base profile header.
 - No implicit heuristics: every non-standard correction is opt-in.
@@ -8,6 +8,6 @@ Design goals (see spec):
 - Independent ΔE2000 validation of the generated ICC against the reference path.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 APP_NAME = "COneLUT"

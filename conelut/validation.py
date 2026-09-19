@@ -1,10 +1,10 @@
-"""Independent ΔE2000 validation of the generated ICC (spec sections 21, 22, 38).
+"""Independent ΔE2000 validation of the generated ICC.
 
 The reference path is evaluated in float at random camera RGB samples; the
 generated path decodes the *written ICC file* (serialization included) and can
-additionally be evaluated through a native lcms2 and the legacy 8-bit Pillow
-CMM for cross-checking. Metrics: ΔE2000 mean / median / p95 / p99 / max plus
-tone/hue region breakdowns.
+additionally be evaluated through a native lcms2 backend for an independent
+cross-check. Metrics: ΔE2000 mean / median / p95 / p99 / max plus tone/hue
+region breakdowns.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from .pipeline import ConversionParams, camera_grid, reference_transform, sampli
 VALIDATION_SEED = 20260918
 DEFAULT_RANDOM_SAMPLES = 100000
 
-# Acceptance targets from spec section 22.
+# Acceptance targets: identity LUTs must round-trip tighter than creative ones.
 IDENTITY_TARGETS = {"mean": 0.10, "p95": 0.25, "max": 1.0}
 CREATIVE_TARGETS = {"mean": 0.25, "p95": 0.75, "max": 2.0}
 
@@ -135,7 +135,6 @@ class ValidationReport:
     base_icc: str
     input: dict
     output: dict
-    capture_one_curve: str
     midtone_gamma: float
     interpolation: str
     icc_grid: int
@@ -152,7 +151,6 @@ class ValidationReport:
     random_samples: int = DEFAULT_RANDOM_SAMPLES
     seed: int = VALIDATION_SEED
     independent_error: str | None = None
-    metrics_legacy: Metrics | None = None
 
     @property
     def targets(self) -> dict:
@@ -186,8 +184,6 @@ class ValidationReport:
             lines.append(f"lcms2 check:    mean {self.metrics_lcms.mean:.4f} / max {self.metrics_lcms.max:.4f}")
         else:
             lines.append(f"Independent CMM: UNVERIFIED ({self.independent_error or 'disabled'})")
-        if self.metrics_legacy is not None:
-            lines.append(f"Legacy vs accurate reference: mean {self.metrics_legacy.mean:.4f} / max {self.metrics_legacy.max:.4f}")
         if self.metrics_cmm8 is not None:
             lines.append(f"8-bit CMM:      mean {self.metrics_cmm8.mean:.4f} / max {self.metrics_cmm8.max:.4f} (informational)")
         for name, region in self.region_metrics.items():
@@ -209,7 +205,6 @@ class ValidationReport:
             "base_icc": self.base_icc,
             "input": self.input,
             "output": self.output,
-            "capture_one_curve": self.capture_one_curve,
             "midtone_gamma": self.midtone_gamma,
             "interpolation": self.interpolation,
             "icc_grid": self.icc_grid,
@@ -233,8 +228,6 @@ class ValidationReport:
             data["metrics_cmm_8bit"] = self.metrics_cmm8.as_dict()
         if self.metrics_grid is not None:
             data["metrics_grid_points"] = self.metrics_grid.as_dict()
-        if self.metrics_legacy is not None:
-            data["metrics_legacy_vs_accurate_reference"] = self.metrics_legacy.as_dict()
         return data
 
     def to_json(self, path: str | Path) -> Path:
@@ -273,11 +266,7 @@ def validate_conversion(
     rgb = np.concatenate([random_rgb, grid_rgb], axis=0)
 
     stats: dict = {}
-    lut_data = None
-    if params.legacy:
-        from .interpolation import resample_3d
-        lut_data = resample_3d(cube.data_3d, 33, "nearest")
-    pcs_kind, ref_values = reference_transform(params, base, cube, rgb, stats, lut_data=lut_data)
+    pcs_kind, ref_values = reference_transform(params, base, cube, rgb, stats)
     lab_reference = _lab_of(pcs_kind, ref_values)
 
     pcs_gen = generated.evaluator(rgb)
@@ -306,12 +295,12 @@ def validate_conversion(
                 raise BaseProfileError("native lcms2 runtime unavailable")
             import copy
             independent_base = copy.copy(base)
-            if base.precision != "8bit":
-                def evaluate_native(samples, intent):
-                    lab = base_backend(samples)
-                    return "pcs", lab if base.pcs == PCS_LAB else lab_to_xyz_d50(lab)
-                independent_base.evaluate = evaluate_native
-            kind, ref = reference_transform(params, independent_base, cube, rgb, lut_data=lut_data)
+
+            def evaluate_native(samples, intent):
+                lab = base_backend(samples)
+                return "pcs", lab if base.pcs == PCS_LAB else lab_to_xyz_d50(lab)
+            independent_base.evaluate = evaluate_native
+            kind, ref = reference_transform(params, independent_base, cube, rgb)
             native_reference = _lab_of(kind, ref)
             native_delta = colour.delta_E(native_reference, backend(rgb), method="CIE 2000")
             # Include regular grid endpoints as well as random samples in the independent gate.
@@ -342,7 +331,6 @@ def validate_conversion(
         base_icc=base.path.name,
         input={"gamut": params.input_gamut, "transfer": params.input_transfer},
         output={"gamut": params.output_gamut, "transfer": params.output_transfer},
-        capture_one_curve=params.c1_curve,
         midtone_gamma=params.midtone_gamma,
         interpolation=params.interpolation,
         icc_grid=params.icc_grid,
@@ -366,28 +354,3 @@ def validate_conversion(
             log(f"  {line}")
     return report
 
-
-def compare_legacy(cube, base, params, random_samples=DEFAULT_RANDOM_SAMPLES, log=print):
-    """Measure the legacy preset against the same uncorrected accurate reference.
-
-    The difference includes 8-bit sampling, interpolation and Film Standard
-    compensation; it does not measure Capture One's proprietary rendering.
-    """
-    from dataclasses import replace
-    import tempfile
-    from .pipeline import generate_profile
-    if params.legacy or params.c1_curve != "linear":
-        raise ValueError("legacy comparison requires the accurate linear C1 curve")
-    legacy_params = replace(params, legacy=True, precision="8bit", c1_curve="film-standard-legacy",
-                            cat="CAT02", interpolation="trilinear", icc_grid=33)
-    legacy_base = BaseProfile(base.path, precision="8bit")
-    blob, _ = generate_profile(cube, legacy_base, legacy_params, log=lambda _: None)
-    with tempfile.TemporaryDirectory(prefix="conelut-legacy-compare-") as folder:
-        path = Path(folder) / "legacy.icc"
-        path.write_bytes(blob)
-        report = validate_conversion(cube, base, params, path, random_samples=random_samples, include_lcms=True, log=lambda _: None)
-    if report.metrics_lcms is None:
-        raise BaseProfileError(f"cannot independently compare legacy: {report.independent_error}")
-    m = report.metrics_lcms
-    log(f"  Legacy vs accurate reference: mean {m.mean:.4f} / p95 {m.p95:.4f} / max {m.max:.4f}")
-    return m

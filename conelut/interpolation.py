@@ -6,9 +6,8 @@ Axes convention: a 3D LUT is stored as ``lut[r, g, b] -> (3,)`` with axes in
 themselves; callers report clamp statistics separately.
 
 Tetrahedral interpolation is the default (OpenColorIO uses INTERP_BEST =
-tetrahedral for 3D LUTs). ``nearest`` and ``trilinear`` are kept as explicit
-legacy options; ``nearest`` matches the old ``resample`` behaviour that the
-spec removes from the default path.
+tetrahedral for 3D LUTs). ``trilinear`` and ``nearest`` are kept as explicit
+lower-quality options for experimentation and cross-checking.
 """
 
 from __future__ import annotations

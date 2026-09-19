@@ -1,6 +1,6 @@
 # C-One LUT — 計測可能な CUBE → ICC 変換
 
-`.cube` 3D LUT を Capture One 用カメラ入力 ICC に焼き込む、**数値検証できる色管理パイプライン** です。ベース ICC のキャリブレーションを保持したまま LUT の Look を反映します。
+`.cube` 3D LUT を Capture One 用のカメラ入力 ICC に焼き込むスタンドアロンの Windows アプリです。ベース ICC 注入の設計を維持しつつ、**色管理パイプラインとして数値検証できる** ことが特徴です。
 
 ```
 Camera RGB
@@ -16,19 +16,19 @@ Capture One  (Curve = Linear Response)
 
 ## 設計の要点
 
-| 項目 | 内容 |
+| 項目 | 実装 |
 | --- | --- |
-| PCS / CLUT 整合 | ベース ICC ヘッダの PCS (`Lab `/`XYZ `) を判定して CLUT エンコードを一致させる |
-| 16bit Lab エンコード | L\*=100 → **0xFF00 (65280)** の ICC legacy エンコード |
-| Profile ID | ICC 規定の MD5 を常に再計算 |
-| A2B intent | `--icc-intent` でサンプリングと書き込み先タグを一致 (perceptual / relative / saturation / mirror) |
-| Base ICC サンプリング | 8bit 量子化なしの **float64** 直接評価 (mft2 / mAB / matrix-shaper)。lcms2 / 8bit も選択可 |
-| CUBE パーサー | DOMAIN_MIN/MAX、1D shaper、行数・NaN・不明ディレクティブの厳密な検証 |
-| LUT 評価 | native グリッドのまま **四面体補間** (trilinear / nearest も選択可) |
-| 色空間モデル | 色域とトランスファーを分離 (`Rec.709 Gamma 2.4` / `sRGB` / `Rec.709 OETF` / `BT.1886` / Log 系) |
-| Film Standard 補正 | 既定は無補正 (Linear Response)。`--c1-curve film-standard-legacy` で opt-in |
-| 中間調補正 | `--midtone-gamma`。1.0 = 補正なし |
-| 検証 | 書き出した ICC ファイルを実測する **ΔE2000 レポート** (mean / median / p95 / p99 / max + 領域別 + ネイティブlcms2独立検証) |
+| PCS / CLUT 整合 | ベース ICC ヘッダの PCS (`Lab `/`XYZ `) を判定し一致させる |
+| 16bit Lab エンコード | ICC 規格の正規 legacy エンコード (L\*=100 → 0xFF00) |
+| Profile ID | ICC 規定の MD5 を再計算して書き込み |
+| A2B intent | `--icc-intent` でサンプリングと書き込み先を一致 (perceptual / relative / saturation / **mirror**) |
+| Base ICC サポート | mft2 / mAB を **float64** で直接評価、matrix-shaper 型 (`rXYZ`/`gTRC`) も可、ネイティブlcms2バックエンドも選択可 |
+| CUBE パーサー | DOMAIN_MIN/MAX、1D shaper、厳密な検証 (行数・NaN・不明ディレクティブ) |
+| LUT 評価 | native グリッドのまま**四面体補間** (リサンプルなし) |
+| Rec.709 と sRGB | 色域とトランスファーを分離 (`Rec.709 Gamma 2.4` / `sRGB` / `Rec.709 OETF` / `BT.1886` / Log 系) |
+| ガンマ補正 | `--midtone-gamma`。1.0 = 補正なし |
+| 検証 | 書き出した ICC ファイルを実測する **ΔE2000 レポート** (mean / median / p95 / p99 / max + 領域別) |
+| レポート | **変換回ごとに 1 つの集計 JSON** (GUI・CLI共通)。詳細はファイル単位でオプトイン |
 
 ## 使い方 (CLI)
 
@@ -37,7 +37,7 @@ python main.py LC_Spectra_Alliance.cube `
   --base-icc LeicaSL-Generic.icc `
   --input-gamut "ITU-R BT.709" --input-transfer "Gamma 2.4" `
   --output-gamut "ITU-R BT.709" --output-transfer "Gamma 2.4" `
-  --c1-curve linear --midtone-gamma 1.0 `
+  --midtone-gamma 1.0 `
   --lut-interpolation tetrahedral --icc-grid 33 `
   --icc-intent perceptual --validate
 ```
@@ -49,13 +49,13 @@ LeicaSL601-LC_Alliance.icc
 COneLUT-run-20260919-101239.json   ← この変換回の集計レポート 1 ファイル
 ```
 
-出力ファイル名は `<カメラ名>-<LUT名>.icc` 形式です。カメラ名はベース ICC の desc/ファイル名から、LUT名は CUBE のファイル名から取ります。検証レポートは**変換回ごとに 1 つの JSON にまとめられます**（全ファイルの要点メトリクス + 全体統計）。ファイルごとの詳細レポートが必要な場合は `--per-file-json` を付けると従来どおり `<name>.validation.json` も出力します。
+出力ファイル名は `<カメラ名>-<LUT名>.icc` 形式 (Capture One 純正プロファイルと同じ命名規則) です。カメラ名はベース ICC の desc/ファイル名から、LUT名は CUBE のファイル名から取ります。
 
 ### カメラとの紐づけ（desc モード）
 
 Capture One のプロファイル一覧に表示される名前は **ICC 内部の `desc` タグ**で、ファイル名ではありません。Capture One はこの文字列でカメラプロファイルとの紐づけを行うため、既定 (`--desc-mode base`) では **ベース ICC の desc をそのまま継承**します（例: `FujiXT5-Generic`）。この場合、リスト上の表示名はベースと同一になりますが、ファイル名で Look を区別できます。
 
-Look ごとに別々の名前で表示したい場合は `--desc-mode look` を指定すると、Capture One 純正と同じ命名規則 `<カメラ名>-<LUT名>`（例: `FujiXT5-Gold200`）で desc を書きます。GUI では詳細設定タブの「プロファイル名（desc）」で切り替えられます。
+Look ごとに別々の名前で表示したい場合は `--desc-mode look` を指定すると、`<カメラ名>-<LUT名>`（例: `FujiXT5-Gold200`）で desc を書きます。GUI では詳細設定タブの「プロファイル名（desc）」で切り替えられます。
 
 | オプション | 内容・既定値 |
 | --- | --- |
@@ -63,25 +63,21 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 | `--input-gamut` / `--input-transfer` | LUT の入力色域 / トランスファー。既定 `sRGB` / `sRGB` |
 | `--output-gamut` / `--output-transfer` | LUT の出力色域 / トランスファー。既定は入力と同じ |
 | `--preset` | 入出力をまとめて設定する簡易プリセット (`Rec.709 Gamma 2.4`, `sRGB`, `Rec.709 OETF`, `BT.1886`, `ARRI LogC3/4`, `Sony S-Log3`, `Fujifilm F-Log/F-Log2`, `Panasonic V-Log` など) |
-| `--c1-curve` | `linear` (既定・無補正) / `film-standard-legacy` (経験則的な 1.25+atan 近似) |
-| `--desc-mode` | `base` (既定・ベースICCのdescを継承してカメラ紐づけを維持) / `look` (`カメラ名-LUT名` で表示を区別) |
 | `--midtone-gamma` | 追加の中間調補正。既定 `1.0` (補正なし) |
+| `--desc-mode` | `base` (既定・ベースICCのdescを継承してカメラ紐づけを維持) / `look` (`カメラ名-LUT名` で表示を区別) |
 | `--lut-interpolation` | `tetrahedral` (既定) / `trilinear` / `nearest` |
 | `--icc-grid` | 17 / 33 (既定) / 49 / 65。33 以外の Capture One 互換性は要実機確認 |
 | `--icc-intent` | `perceptual` (既定) / `relative` / `saturation` / `mirror` (A2B0 と A2B1 に同じ Look) |
 | `--cat` | 色順応手法。既定 `Bradford` |
 | `--domain-policy` | DOMAIN 外入力: `clamp` (既定) / `error` / `extrapolate`。クランプ率はレポートに記録 |
 | `--lut-domain-policy` | CLUT ドメイン外: `clamp` / `error` |
-| `--cms-precision` | `float` (既定) / `lcms` / `8bit` |
+| `--cms-precision` | `float` (既定) / `lcms` (ネイティブlcms2) |
 | `--validate` | ΔE2000 検証を実行 (ネイティブlcms2による独立検証を含む) |
-| `--compare-legacy` | 検証時に legacy 相当設定との誤差比較も追加 |
 | `--validation-samples` | ランダム検証サンプル数 (既定 100000、固定シードで再現可能)。`0` で格子点のみ |
 | `--run-report PATH` | 変換回の集計レポートの保存先 (既定は最初の出力の横に `COneLUT-run-<日時>.json`)。`--no-run-report` で無効化 |
 | `--per-file-json` | ファイルごとの詳細 `.validation.json` も出力 (既定はオフ。`--report-json PATH` で単一ファイルの詳細レポート先を指定) |
 | `--output-dir` / `--existing` | 保存先 / `rename` `skip` `overwrite` (CLI 既定は `overwrite`) |
 | `--probe-intent OUT.icc` | Capture One がどの A2B タグを使うか調べるプローブ ICC を生成 |
-
-次のオプション名は警告付きのエイリアスとして動作します: `--target-gamut` / `--target-curve` / `--lut-output-gamut` / `--lut-output-curve` / `--gamma`。
 
 ## 保存の保護とベースプロファイルの対応
 
@@ -90,7 +86,7 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 - 同一バッチ内で同名になる複数の結果 (別フォルダーの同名 CUBE など) は自動的に別ファイルとして保存され、互いに上書きしません
 - `--existing overwrite` は保護対象・バッチ内先行結果以外の既存ファイルに対してのみ上書きします (GUI の「既存ファイルを上書き」も同様)
 - ファイルは一時ファイル経由の**アトミックな書き込み**で公開されるため、変換中の中断で壊れた ICC が残りません
-- ベース ICC は A2B タグを持つカメラプロファイル(推奨)に加え、**matrix-shaper 型**(`rXYZ`/`gTRC` 構成の通常の sRGB.icc など)も全精度モードで読めます。標準の `curveType` (32bit 要素数) と全ての `parametricCurveType` 形式、v4 の `mAB` 構造に対応しています
+- ベース ICC は A2B タグを持つカメラプロファイル(推奨)に加え、**matrix-shaper 型**(`rXYZ`/`gTRC` 構成の通常の sRGB.icc など)も読めます。標準の `curveType` (32bit 要素数) と全ての `parametricCurveType` 形式、v4 の `mAB` 構造に対応しています
 
 ### Capture One が使う A2B タグを実測する
 
@@ -141,7 +137,7 @@ CLI では `--run-report PATH` で保存先を指定、`--no-run-report` で無�
 
 ### ファイルごとの詳細レポート (オプトイン)
 
-`--per-file-json` を付けると、従来の `<name>.validation.json` (領域別統計・ドメイン統計・サンプルシードなど全文) も各 ICC の横に出力します。CLI を単独で使った場合のコンソールには引き続き詳細ブロックが表示されます:
+`--per-file-json` を付けると、従来の `<name>.validation.json` (領域別統計・ドメイン統計・サンプルシードなど全文) も各 ICC の横に出力します。CLI を単独で使った場合のコンソールには詳細ブロックが表示されます:
 
 ```text
 Validation report
@@ -155,9 +151,8 @@ Validation report
 
 - 合格 (`PASS`) には **独立検証の成功が必須**です。ネイティブlcms2が利用できない場合、判定は `UNVERIFIED` になり `PASS` にはなりません (JSON の `validation_status` と `independent_error` を参照)
 - `--validation-samples 0` は格子点のみの検証、負の値は CLI でエラーになります
-- `--compare-legacy` を追加すると、legacy 相当設定と正確基準の差もレポートに記録されます
 
-合格目標 (spec §22): identity LUT は mean<0.10 / p95<0.25 / max<1.0、creative LUT は mean<0.25 / p95<0.75 / max<2.0。33³ CLUT の制約上、広色域カメラプロファイルでは色域境界のクランプ部で誤差が集中することがあります (レポートの domain 統計と `near_gamut_boundary` で確認できます)。
+合格目標: identity LUT は mean<0.10 / p95<0.25 / max<1.0、creative LUT は mean<0.25 / p95<0.75 / max<2.0。33³ CLUT の制約上、広色域カメラプロファイルでは色域境界のクランプ部で誤差が集中することがあります (レポートの domain 統計と `near_gamut_boundary` で確認できます)。
 
 ## GUI
 
@@ -168,24 +163,15 @@ python main.py            (引数なしで GUI が開く)
 
 ![C-One LUT GUI](art/ui_preview.png)
 
-Capture One を想起させるダークテーマ (チャコール + オレンジのアクセント、`conelut/theme.py`) で、高 DPI (200% など) でも滲まず描画されます。スクリーンショットは `python tools/shot_ui.py` で再生成できます。
+Capture One を想起させるダークテーマ (チャコール + オレンジのアクセント、`conelut/theme.py`) で、タイトルバーまで統一色、高 DPI (200% など) でも滲まず描画されます。スクリーンショットは `python tools/shot_ui.py` で再生成できます。
 
-- **基本設定**: LUT 入力 / 出力プリセット (既定 `Rec.709 Gamma 2.4`)、Capture One Curve (既定 Linear Response)、追加中間調ガンマ (既定 1.0)、検証の有無
+- **基本設定**: LUT 入力 / 出力プリセット (既定 `Rec.709 Gamma 2.4`)、追加中間調ガンマ (既定 1.0)、検証の有無
 - **ベース ICC 検索**: 検出したプロファイルフォルダーを再帰的に走査し、キーワード (空白区切り AND、大文字小文字不限) でドロップダウンを絞り込めます。選択欄は検索にリアルタイムで追従し、絞り込みの先頭ヒットを表示します (現在の選択が引き続き一致する場合は保持)。検索を空にしても選択は変わりません (例: `leica sl`)
-- **詳細設定**: 色域 / トランスファー、補間、ICC グリッド、intent、CAT、ドメインポリシー、CMS 精度、legacy モード
+- **詳細設定**: 色域 / トランスファー、補間、ICC グリッド、intent、CAT、ドメインポリシー、CMS 精度
 - CUBE を追加すると TITLE・サイズ・DOMAIN・`#Input:` ヒントを表示します (ヒントだけでトランスファーは決めません)
 - **変換後のログは必要数値だけ**: 各ファイル 1 行 (`ΔE2000 平均 / P95 / 最大 | lcms2 平均 / 最大 → 判定`) と、最後に全体サマリ (`検証サマリ: N ファイル / PASS | 最悪 平均…・最大…`) だけを表示します
 - 検証の詳細は**変換回ごとに 1 つの JSON** (`COneLUT-run-<日時>.json`) に出力先フォルダーに保存されます (実行設定・全ファイルのメトリクス・全体統計入り)
-
-## Legacy モード
-
-Film Standard 風の見た目が必要な場合:
-
-```powershell
-python main.py film.cube --base-icc camera.icc --legacy
-```
-
-8bit CMS サンプリング、三線形補間、33³ への再サンプル、固定 Film Standard 補正、CAT02 を使う互換経路で変換します。ただし PCS / Profile ID など ICC として不正になる部分は安全側に修正されます。`--legacy` 時は `LogC3` などの短縮プリセット名も `--preset` で受け付け、出力エンコーディングの既定は sRGB になります (8bit モードの rendering intent も指定 A2B タグと一致します)。
+- 変換後に Capture One のプロファイルフォルダーへコピーすることもできます
 
 ## ソースから実行 / ビルド
 
@@ -228,7 +214,7 @@ dist\COneLUT\COneLUT.exe --selftest   # 終了コード 0 で正常
 
 ```powershell
 .venv\Scripts\python -m pip install pytest==8.3.5
-.venv\Scripts\python -m pytest tests -q          # 122 tests
+.venv\Scripts\python -m pytest tests -q          # 123 tests
 ```
 
 `tests/test_ocio.py` は OpenColorIO との独立比較 (17³/33³/65³ の CUBE 補間が OCIO と一致することを検証) で、`pip install opencolorio` していなければ自動スキップします。開発時のみ入れてください。
@@ -251,7 +237,7 @@ C-One-LUT/
 │  ├─ report.py       変換回ごとの集計 JSON レポート
 │  ├─ convert.py      1 ファイル変換オーケストレーション
 │  ├─ files.py        保存先保護・衝突解決・アトミック書き込み
-│  ├─ presets.py      簡易プリセット (短縮名エイリアス込み)
+│  ├─ presets.py      簡易プリセット
 │  ├─ theme.py        Capture One 風ダークテーマ + 高 DPI 対応
 │  └─ capture_one.py  プロファイル探索 / intent プローブ / インストール
 ├─ native/            lcms2.dll とライセンス (EXE に同梱)
@@ -261,16 +247,14 @@ C-One-LUT/
 
 ## 既知の制限
 
-- `film-standard-calibrated` (Film Standard の実測キャリブレーション) と 3D calibration solver は未実装 (spec §10 の第二段階)
 - 33³ 以外の ICC グリッドは Capture One 実機での互換性確認が未済
 - Alliance の `#Input: Rec.709` のようにヘッダコメントがあってもトランスファー (Gamma 2.4 / BT.1886 / OETF…) は自動決定しません。A/B 比較 (`Rec.709 Gamma 2.4` vs `sRGB` など) で確定してください
-- Leica SL601 + Alliance LUT の Capture One 実描画比較、clean Windows VM での EXE 動作確認は未実施
+- clean Windows VM での EXE 動作確認は未実施
 
 ## ライセンス
 
 - 本体のコードは **GNU General Public License v3** のもとで公開します ([LICENSE](LICENSE))
 - 同梱の `native/lcms2.dll` は LittleCMS (MIT License) で、`native/LCMS-LICENSE` がその表示です
-。
 
 ## 商標について
 

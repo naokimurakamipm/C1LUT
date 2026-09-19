@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """C-One LUT — command line interface.
 
-Examples (spec section 37):
+Examples:
 
     python main.py LC_Spectra_Alliance.cube \\
         --base-icc LeicaSL-Generic.icc \\
         --input-gamut "ITU-R BT.709" --input-transfer "Gamma 2.4" \\
         --output-gamut "ITU-R BT.709" --output-transfer "Gamma 2.4" \\
-        --c1-curve linear --midtone-gamma 1.0 \\
+        --midtone-gamma 1.0 \\
         --lut-interpolation tetrahedral --icc-grid 33 \\
         --icc-intent perceptual --validate
 
@@ -17,8 +17,6 @@ Outputs:
 
 Detailed per-file reports are opt-in: --per-file-json writes
 <name>.validation.json next to every ICC.
-
-Legacy behaviour of 1.x legacy: --legacy (or --compat 2026.09).
 Intent probe for Capture One: --probe-intent probe.icc
 GUI (default with no arguments): --gui
 """
@@ -30,33 +28,26 @@ import os
 import sys
 from pathlib import Path
 
-import numpy as np
-
 from conelut.capture_one import write_intent_probe
 from conelut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
 from conelut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES, ColorspaceError
 from conelut.cube import CubeParseError, parse_cube
 from conelut.pipeline import (
-    C1_CURVES,
     DEFAULT_GRID,
     ICC_GRID_CHOICES,
     ConversionParams,
-    generate_profile,
-    output_filename,
 )
-from conelut.presets import PRESETS, LEGACY_PRESET_ALIASES, resolve_preset
+from conelut.presets import PRESETS, resolve_preset
 from conelut.convert import FileResult, convert_file
 from conelut.files import destination as choose_destination
 from conelut.report import RunReport, run_report_path, settings_from_params
-from conelut.validation import DEFAULT_RANDOM_SAMPLES, validate_conversion
-
-LEGACY_COMPAT = "2026.09"
+from conelut.validation import DEFAULT_RANDOM_SAMPLES
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conelut",
-        description="Convert CUBE LUTs to ICC camera input profiles for Capture One (v2 engine)",
+        description="Convert CUBE LUTs to ICC camera input profiles for Capture One",
         epilog="Run without arguments to open the GUI.",
     )
     parser.add_argument("input_cube", nargs="*", type=Path, help="input .cube files")
@@ -69,7 +60,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
                      help=f"default: sRGB; one of {', '.join(TRANSFER_CHOICES)}")
     enc.add_argument("--output-gamut", metavar="GAMUT")
     enc.add_argument("--output-transfer", metavar="TRANSFER")
-    enc.add_argument("--preset", choices=sorted(set(PRESETS) | set(LEGACY_PRESET_ALIASES)),
+    enc.add_argument("--preset", choices=sorted(PRESETS),
                      help="convenience preset that sets input AND output encoding")
     iccg = parser.add_argument_group("ICC generation")
     iccg.add_argument("--icc-grid", type=int, default=DEFAULT_GRID, choices=ICC_GRID_CHOICES,
@@ -88,10 +79,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     lutg.add_argument("--lut-domain-policy", default="clamp", choices=("clamp", "error"),
                       help="policy for LUT samples outside the CLUT domain (default: clamp)")
     c1 = parser.add_argument_group("Capture One")
-    c1.add_argument("--c1-curve", default="linear", choices=C1_CURVES,
-                    help="Capture One curve compensation baked into the ICC (default: linear = none; "
-                         "use Linear Response in Capture One)")
-    c1.add_argument("--midtone-gamma", "--gamma", dest="midtone_gamma", type=float, default=1.0,
+    c1.add_argument("--midtone-gamma", type=float, default=1.0,
                     help="additional midtone compensation; 1.0 = no compensation (default: 1.0)")
     c1.add_argument("--desc-mode", default="base", choices=("base", "look"),
                     help="desc tag shown in Capture One's profile list: 'base' keeps the base profile's "
@@ -99,13 +87,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                          "'look' writes <Camera>-<Look> for distinguishable entries")
     cms = parser.add_argument_group("CMS precision")
     cms.add_argument("--cms-precision", default="float", choices=PRECISION_CHOICES,
-                     help="base ICC sampling precision: float (default), lcms (native lcms2 if present), "
-                          "8bit (legacy quantized path)")
+                     help="base ICC sampling precision: float (default), lcms (native lcms2 if present)")
     val = parser.add_argument_group("Validation")
     val.add_argument("--validate", action="store_true",
                      help="measure dE2000 between the reference path and the written ICC")
-    val.add_argument("--compare-legacy", action="store_true",
-                     help="also measure legacy output against the same accurate reference (implies --validate)")
     val.add_argument("--validation-samples", type=int, default=DEFAULT_RANDOM_SAMPLES,
                      help=f"random validation samples (default {DEFAULT_RANDOM_SAMPLES})")
     val.add_argument("--report-json", type=Path, help="path for the per-file detailed validation JSON")
@@ -122,46 +107,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     out.add_argument("--output-dir", type=Path, help="output directory (default: beside each CUBE)")
     out.add_argument("--existing", default="overwrite", choices=("rename", "skip", "overwrite"),
                      help="behaviour for existing output files (CLI default: overwrite)")
-    compat = parser.add_argument_group("Compatibility")
-    compat.add_argument("--legacy", action="store_true",
-                        help="reproduce 1.x legacy behaviour (8-bit CMM, trilinear, resample, fixed Film "
-                             "Standard compensation); PCS/profile-ID safety fixes still apply")
-    compat.add_argument("--compat", metavar="VERSION", choices=(LEGACY_COMPAT,), help="same as --legacy")
-    compat.add_argument("--target-gamut", help="deprecated alias of --input-gamut")
-    compat.add_argument("--target-curve", help="deprecated alias of --input-transfer")
-    compat.add_argument("--lut-output-gamut", help="deprecated alias of --output-gamut")
-    compat.add_argument("--lut-output-curve", help="deprecated alias of --output-transfer")
-    compat.add_argument("--probe-intent", type=Path, metavar="PATH",
-                        help="write the Capture One A2B intent probe ICC and exit")
-    compat.add_argument("--gui", action="store_true", help=argparse.SUPPRESS)
+    misc = parser.add_argument_group("Tools")
+    misc.add_argument("--probe-intent", type=Path, metavar="PATH",
+                      help="write the Capture One A2B intent probe ICC and exit")
+    misc.add_argument("--gui", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
 def _resolve_encoding(args) -> tuple[str, str, str, str]:
-    deprecated = []
-    if args.target_gamut:
-        args.input_gamut = args.input_gamut or args.target_gamut
-        deprecated.append("--target-gamut -> --input-gamut")
-    if args.target_curve:
-        args.input_transfer = args.input_transfer or args.target_curve
-        deprecated.append("--target-curve -> --input-transfer")
-    if args.lut_output_gamut:
-        args.output_gamut = args.output_gamut or args.lut_output_gamut
-        deprecated.append("--lut-output-gamut -> --output-gamut")
-    if args.lut_output_curve:
-        args.output_transfer = args.output_transfer or args.lut_output_curve
-        deprecated.append("--lut-output-curve -> --output-transfer")
-    for note in deprecated:
-        print(f"warning: deprecated option {note}", file=sys.stderr)
-
     preset = resolve_preset(args.preset) if args.preset else None
     input_gamut = args.input_gamut or (preset["input_gamut"] if preset else "sRGB")
     input_transfer = args.input_transfer or (preset["input_transfer"] if preset else "sRGB")
-    legacy = args.legacy or bool(args.compat)
-    if legacy and preset:
-        input_gamut, input_transfer = preset["input_gamut"], preset["input_transfer"]
-    output_gamut = args.output_gamut or ("sRGB" if legacy else None) or (preset["output_gamut"] if preset else input_gamut)
-    output_transfer = args.output_transfer or ("sRGB" if legacy else None) or (preset["output_transfer"] if preset else input_transfer)
+    output_gamut = args.output_gamut or (preset["output_gamut"] if preset else input_gamut)
+    output_transfer = args.output_transfer or (preset["output_transfer"] if preset else input_transfer)
     from conelut.colorspaces import canonical_gamut, canonical_transfer
     return canonical_gamut(input_gamut), canonical_transfer(input_transfer), canonical_gamut(output_gamut), canonical_transfer(output_transfer)
 
@@ -184,7 +142,6 @@ def convert_one(cube_path: Path, base: BaseProfile, params: ConversionParams, ar
         validate=args.validate, validation_samples=args.validation_samples,
         write_json=args.per_file_json or bool(args.report_json), log=print, used=used,
         protected=protected, report_json=args.report_json,
-        compare_legacy=args.compare_legacy,
     )
     if result.status == "skipped":
         print(f"[skip] {cube_path.name}: output already exists")
@@ -215,8 +172,6 @@ def main(argv=None) -> int:
         parser.error("--base-icc is required (the camera profile whose calibration is kept)")
     if args.validation_samples < 0:
         parser.error("--validation-samples must be non-negative (0 = regular grid only)")
-    if args.compat:
-        args.legacy = True
 
     input_gamut, input_transfer, output_gamut, output_transfer = _resolve_encoding(args)
     try:
@@ -225,25 +180,20 @@ def main(argv=None) -> int:
             input_transfer=input_transfer,
             output_gamut=output_gamut,
             output_transfer=output_transfer,
-            c1_curve="film-standard-legacy" if args.legacy else args.c1_curve,
             midtone_gamma=args.midtone_gamma,
-            interpolation="trilinear" if args.legacy else args.lut_interpolation,
+            interpolation=args.lut_interpolation,
             icc_grid=args.icc_grid,
             icc_intent=args.icc_intent,
-            cat="CAT02" if args.legacy else args.cat,
+            cat=args.cat,
             domain_policy=args.domain_policy,
             lut_domain_policy=args.lut_domain_policy,
-            precision="8bit" if args.legacy else args.cms_precision,
-            legacy=args.legacy,
+            precision=args.cms_precision,
             desc_mode=args.desc_mode,
         )
         params.validate()
     except (ValueError, ColorspaceError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    if args.legacy:
-        print("Legacy compatibility mode: 8-bit CMM sampling, trilinear LUT, resample to 33^3, "
-              "fixed Film Standard compensation, CAT02.")
 
     try:
         base = BaseProfile(args.base_icc, precision=params.precision)

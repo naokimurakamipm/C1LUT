@@ -102,7 +102,7 @@ def test_resample_up_and_down():
     assert np.allclose(down, identity_cube_data(33), atol=1e-12)
 
     # Resampling a smooth function must differ from nearest-index selection
-    # (the legacy behaviour) on non-identity data.
+    # on non-identity data.
     size = 9
     x = np.linspace(0, 1, size)
     rr, gg, bb = np.meshgrid(x, x, x, indexing="ij")

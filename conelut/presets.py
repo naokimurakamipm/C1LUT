@@ -1,4 +1,4 @@
-"""Convenience presets over the separate gamut/transfer model (spec sections 11, 12).
+"""Convenience presets over the separate gamut/transfer model.
 
 Presets always set BOTH the input and the output encoding of the LUT; for full
 control use the explicit gamut/transfer options. Comment hints in a .cube file
@@ -30,17 +30,6 @@ PRESETS: dict[str, dict[str, str]] = {
     "Fujifilm F-Log": _pair("F-Gamut", "F-Log"),
     "Fujifilm F-Log2": _pair("F-Gamut", "F-Log2"),
     "Panasonic V-Log": _pair("V-Gamut", "V-Log"),
-}
-
-# Legacy preset keys from 1.x legacy kept working for old scripts.
-LEGACY_PRESET_ALIASES: dict[str, str] = {
-    "sRGB": "sRGB",
-    "LogC3": "ARRI LogC3",
-    "LogC4": "ARRI LogC4",
-    "S-Log3": "Sony S-Log3",
-    "F-Log": "Fujifilm F-Log",
-    "F-Log2": "Fujifilm F-Log2",
-    "V-Log": "Panasonic V-Log",
 }
 
 GAMUT_NAME_TAGS: dict[str, str] = {
@@ -79,6 +68,5 @@ TRANSFER_NAME_TAGS: dict[str, str] = {
 
 
 def resolve_preset(name: str) -> dict[str, str] | None:
-    """Resolve a preset by current or legacy name; None when unknown."""
-    canonical = LEGACY_PRESET_ALIASES.get(name, name)
-    return PRESETS.get(canonical)
+    """Resolve a preset by name; None when unknown."""
+    return PRESETS.get(name)

@@ -22,7 +22,7 @@ from conelut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
 from conelut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES
 from conelut.convert import CONVERT_ERRORS, convert_file
 from conelut.cube import parse_cube
-from conelut.pipeline import C1_CURVES, DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
+from conelut.pipeline import DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
 from conelut.presets import PRESETS, resolve_preset
 from conelut.files import destination as choose_destination
 from conelut.report import (
@@ -54,10 +54,6 @@ EXISTING_POLICIES = {
     "既存ファイルを上書き": "overwrite",
 }
 STATUS_LABELS = {"success": "完了", "error": "エラー", "skipped": "スキップ", "cancelled": "中止"}
-C1_CURVE_LABELS = {
-    "Linear Response（推奨）": "linear",
-    "Film Standard Legacy（1.x互換の近似）": "film-standard-legacy",
-}
 INTERPOLATION_LABELS = {
     "tetrahedral（四面体・推奨）": "tetrahedral",
     "trilinear（三線形）": "trilinear",
@@ -66,7 +62,6 @@ INTERPOLATION_LABELS = {
 PRECISION_LABELS = {
     "float（浮動小数点・推奨）": "float",
     "lcms（native lcms2、見つかれば）": "lcms",
-    "8bit（旧版の量子化パス）": "8bit",
 }
 DESC_MODE_LABELS = {
     "ベースICCの名称を引き継ぐ（カメラ紐づけ・既定）": "base",
@@ -108,7 +103,6 @@ class Cube2IccApp:
         # Basic settings
         self.input_preset = tk.StringVar(value="Rec.709 Gamma 2.4")
         self.output_preset = tk.StringVar(value="Rec.709 Gamma 2.4")
-        self.c1_curve_label = tk.StringVar(value=next(iter(C1_CURVE_LABELS)))
         self.midtone_gamma = tk.StringVar(value="1.0")
         self.validate = tk.BooleanVar(value=True)
 
@@ -126,7 +120,6 @@ class Cube2IccApp:
         self.precision_label = tk.StringVar(value=next(iter(PRECISION_LABELS)))
         self.desc_mode_label = tk.StringVar(value=next(iter(DESC_MODE_LABELS)))
         self.validation_samples = tk.StringVar(value="50000")
-        self.legacy = tk.BooleanVar(value=False)
 
         # Output settings
         self.output_dir = tk.StringVar()
@@ -258,11 +251,8 @@ class Cube2IccApp:
                                                   values=[*PRESETS, CUSTOM_PRESET], state="readonly"), "readonly")
         output_preset.grid(row=0, column=3, sticky="ew", pady=4)
         output_preset.bind("<<ComboboxSelected>>", lambda _e: self.apply_presets())
-        ttk.Label(tab, text="Capture One Curve").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=4)
-        self.control(ttk.Combobox(tab, textvariable=self.c1_curve_label,
-                                  values=list(C1_CURVE_LABELS), state="readonly"), "readonly").grid(row=1, column=1, sticky="ew", pady=4)
-        ttk.Label(tab, text="追加中間調ガンマ").grid(row=1, column=2, sticky="w", padx=(20, 10), pady=4)
-        self.control(ttk.Entry(tab, textvariable=self.midtone_gamma)).grid(row=1, column=3, sticky="ew", pady=4)
+        ttk.Label(tab, text="追加中間調ガンマ").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=4)
+        self.control(ttk.Entry(tab, textvariable=self.midtone_gamma)).grid(row=1, column=1, sticky="ew", pady=4)
         self.control(ttk.Checkbutton(tab, text="ΔE2000 検証を実行してレポートを保存する（推奨）",
                                      variable=self.validate)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
         ttk.Label(tab, text=" Alliance などの Rec.709 系 LUT は「Rec.709 Gamma 2.4」推奨。sRGB 専用 LUT は「sRGB」。"
@@ -296,9 +286,6 @@ class Cube2IccApp:
                       if values is not None else ttk.Entry(tab, textvariable=variable))
             self.control(widget, "readonly" if values is not None else "normal")
             widget.grid(row=row, column=column * 2 + 1, sticky="ew", pady=3)
-        last_row = (len(rows) + 1) // 2
-        self.control(ttk.Checkbutton(tab, text="旧版 (1.x) 互換モードで実行する（8bit CMM・三線形・33³ 再サンプル・Film Standard 補正）",
-                                     variable=self.legacy)).grid(row=last_row, column=0, columnspan=4, sticky="w", pady=(8, 0))
         return tab
 
     def _output_tab(self, notebook):
@@ -476,28 +463,20 @@ class Cube2IccApp:
             raise ValueError("追加中間調ガンマには 0 より大きい有限の数値を入力してください。")
         output = self.output_dir.get().strip()
         output_dir = Path(output).expanduser().resolve() if output else None
-        legacy = self.legacy.get()
-        base = BaseProfile(base_file, precision="8bit" if legacy
-                           else PRECISION_LABELS[self.precision_label.get()])
-        # Legacy mode forces the same overrides as the CLI --legacy flag so the
-        # 1.x pipeline is reproduced without requiring the user to also switch
-        # the curve/interpolation/CAT selectors by hand (the ICC grid is forced
-        # to 33 inside the pipeline).
+        base = BaseProfile(base_file, precision=PRECISION_LABELS[self.precision_label.get()])
         params = ConversionParams(
             input_gamut=self.input_gamut.get().strip(),
             input_transfer=self.input_transfer.get().strip(),
             output_gamut=self.output_gamut.get().strip(),
             output_transfer=self.output_transfer.get().strip(),
-            c1_curve="film-standard-legacy" if legacy else C1_CURVE_LABELS[self.c1_curve_label.get()],
             midtone_gamma=gamma,
-            interpolation="trilinear" if legacy else INTERPOLATION_LABELS[self.interpolation_label.get()],
+            interpolation=INTERPOLATION_LABELS[self.interpolation_label.get()],
             icc_grid=int(self.icc_grid.get()),
             icc_intent=self.icc_intent.get(),
-            cat="CAT02" if legacy else self.cat.get(),
+            cat=self.cat.get(),
             domain_policy=self.domain_policy.get(),
             lut_domain_policy=self.lut_domain_policy.get(),
             precision=base.precision,
-            legacy=legacy,
             desc_mode=DESC_MODE_LABELS[self.desc_mode_label.get()],
         )
         params.validate()
@@ -543,7 +522,7 @@ class Cube2IccApp:
         self.log(f"ベース ICC: {base.path}  (PCS: {base.pcs.decode()})")
         self.log(f"CUBE 入力: {params.input_gamut} / {params.input_transfer}  |  "
                  f"CUBE 出力: {params.output_gamut} / {params.output_transfer}  |  "
-                 f"C1 Curve: {params.c1_curve}  |  中間調ガンマ: {params.midtone_gamma}")
+                 f"中間調ガンマ: {params.midtone_gamma}")
         self.worker = threading.Thread(
             target=self.conversion_worker,
             args=(paths, base, params, output_dir, options), name="conelut-convert")

@@ -1,4 +1,4 @@
-"""One aggregate JSON report per conversion run (spec sections 21, 22, 38).
+"""One aggregate JSON report per conversion run.
 
 Instead of a scatter of per-file ``.validation.json`` files, every conversion
 run — GUI batch, CLI invocation, folder batch — produces a single run report
@@ -24,7 +24,6 @@ def settings_from_params(params, validation_samples: int | None = None) -> dict:
         "input_transfer": params.input_transfer,
         "output_gamut": params.output_gamut,
         "output_transfer": params.output_transfer,
-        "capture_one_curve": params.c1_curve,
         "midtone_gamma": params.midtone_gamma,
         "interpolation": params.interpolation,
         "icc_grid": params.icc_grid,
@@ -33,7 +32,6 @@ def settings_from_params(params, validation_samples: int | None = None) -> dict:
         "domain_policy": params.domain_policy,
         "lut_domain_policy": params.lut_domain_policy,
         "cms_precision": params.precision,
-        "legacy_mode": params.legacy,
         "desc_mode": params.desc_mode,
     }
     if validation_samples is not None:
@@ -83,11 +81,6 @@ class RunReport:
                 entry["domain_clamped_pct"] = {
                     "below": round(summary["below_pct"], 3),
                     "above": round(summary["above_pct"], 3),
-                }
-            if summary.get("legacy_mean") is not None:
-                entry["legacy_vs_accurate_reference"] = {
-                    "mean": round(summary["legacy_mean"], 4),
-                    "max": round(summary["legacy_max"], 4),
                 }
         self.entries.append(entry)
 

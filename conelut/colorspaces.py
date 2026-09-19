@@ -1,4 +1,4 @@
-"""Gamut and transfer function definitions (spec section 11).
+"""Gamut and transfer function definitions.
 
 Gamut (primaries + white point) and transfer (encoding curve) are modelled
 separately: ``Rec.709`` and ``sRGB`` share primaries but differ in transfer

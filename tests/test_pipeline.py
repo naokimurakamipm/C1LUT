@@ -1,4 +1,4 @@
-"""Base profile evaluation and pipeline tests (spec sections 5, 9, 19, 27)."""
+"""Base profile evaluation and pipeline tests."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from conelut.cms import BaseProfile, Mft2Tag
 from conelut.cube import CubeLUT
 from conelut.pipeline import (
     ConversionParams,
-    apply_film_standard_legacy,
     camera_grid,
     generate_profile,
     reference_transform,
@@ -100,27 +99,6 @@ def test_channel_swap_lut_changes_red_only(synthetic_base):
     assert np.abs(values[0] - values[1]).max() > 1.0
 
 
-def test_film_standard_legacy_is_opt_in(synthetic_base):
-    lut = identity_lut()
-    rgb = camera_grid(5)
-    kind_a, a = reference_transform(ConversionParams(), synthetic_base, lut, rgb)
-    kind_b, b = reference_transform(
-        ConversionParams(c1_curve="film-standard-legacy"), synthetic_base, lut, rgb
-    )
-    assert kind_a == kind_b == "Lab"
-    assert np.abs(a - b).max() > 1.0  # the legacy curve changes the look
-
-
-def test_film_standard_legacy_monotone_s_curve():
-    x = np.linspace(0.0, 1.0, 11)
-    y = apply_film_standard_legacy(np.column_stack([x] * 3))
-    assert np.all(np.diff(y[:, 0]) > 0)
-    assert y[0, 0] == pytest.approx(0.0)
-    assert y[-1, 0] == pytest.approx(1.0)
-    # 0.5 maps to 0.5 (symmetry)
-    assert y[5, 0] == pytest.approx(0.5, abs=1e-9)
-
-
 def test_midtone_gamma_changes_midtones(synthetic_base):
     lut = identity_lut()
     rgb = camera_grid(5)
@@ -150,7 +128,7 @@ def test_generate_profile_meta(synthetic_base, tmp_path):
     assert profile2.tag(b"A2B0") is None
     assert profile2.tag(b"A2B2") is None
     # Default desc mode keeps the base profile's description verbatim so
-    # Capture One keeps the camera association (1.x behaviour).
+    # Capture One keeps the camera association.
     assert profile2.description() == "TestCamera-Generic"
 
     params_look = ConversionParams(icc_intent="relative", desc_mode="look")

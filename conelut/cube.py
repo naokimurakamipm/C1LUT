@@ -1,4 +1,4 @@
-"""CUBE (.cube) LUT parsing, validation and evaluation (spec sections 6, 14).
+"""CUBE (.cube) LUT parsing, validation and evaluation.
 
 Supported directives:
 
@@ -47,8 +47,7 @@ class CubeLUT:
     def metadata_hints(self) -> dict[str, str]:
         """Extract hint-style comments such as ``#Input: Rec.709``.
 
-        Comments are hints only; they never decide the transfer function
-        (spec section 33.3).
+        Comments are hints only; they never decide the transfer function.
         """
         hints: dict[str, str] = {}
         for comment in self.comments:

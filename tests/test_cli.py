@@ -46,8 +46,8 @@ def test_basic_conversion_with_validation(env):
     assert data["files"][0]["validation_status"] == "PASS"
     assert data["validation"]["overall_status"] == "PASS"
     assert "lcms2_check" in data["files"][0]
-    # Output follows the 1.x style <Camera>-<Look>.icc and keeps the base
-    # profile's desc so Capture One links the profile to the camera.
+    # Output keeps the base profile's desc so Capture One links the
+    # generated profile to the camera, and the file name is <Camera>-<Look>.icc.
     assert outputs[0].stem == "TestCamera-film"
     from conelut.icc import ICCProfile
 
@@ -104,31 +104,6 @@ def test_desc_mode_look_names_profiles_by_camera_and_look(env):
     from conelut.icc import ICCProfile
 
     assert ICCProfile(outputs[0].read_bytes()).description() == "TestCamera-film"
-
-
-def test_legacy_mode(env, capsys):
-    base, cube, tmp = env
-    code = main([
-        str(cube), "--base-icc", str(base), "--legacy",
-        "--output-dir", str(tmp / "legacy"),
-    ])
-    assert code == 0
-    assert list((tmp / "legacy").glob("*.icc"))
-    err = capsys.readouterr().out
-    assert "Legacy compatibility mode" in err
-
-
-def test_deprecated_aliases(env, capsys):
-    base, cube, tmp = env
-    code = main([
-        str(cube), "--base-icc", str(base),
-        "--target-gamut", "sRGB", "--target-curve", "sRGB",
-        "--lut-output-gamut", "sRGB", "--lut-output-curve", "sRGB",
-        "--gamma", "1.0", "--output-dir", str(tmp / "alias"),
-    ])
-    assert code == 0
-    captured = capsys.readouterr()
-    assert "--target-gamut" in captured.err
 
 
 def test_existing_policies(env):

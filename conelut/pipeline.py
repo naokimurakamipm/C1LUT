@@ -1,21 +1,19 @@
-"""Reference colour pipeline: Camera RGB -> Base ICC -> LUT -> PCS (spec sections 1, 9, 13, 14, 33).
+"""Reference colour pipeline: Camera RGB -> Base ICC -> LUT -> PCS.
 
-Reference path (accuracy mode):
+Reference path:
 
     camera RGB grid
       -> Base ICC A2Bx evaluation (float, intent-matched)   [cms.py]
       -> PCS (D50) -> sRGB linear                           [Bradford CAT]
       -> target input gamut (linear) -> input transfer encode
       -> source CUBE LUT (native grid, tetrahedral)
-      -> optional Capture One curve (opt-in; default: linear = none)
       -> optional additional midtone gamma (opt-in; default 1.0)
       -> output transfer decode -> output gamut linear
       -> XYZ (D50, Bradford CAT)
       -> PCS (Lab or XYZ, following the base profile header)
 
-Capture One heuristics are strictly separated from the colour core: the
-legacy ``1.25 + atan`` Film Standard approximation is opt-in via
-``c1_curve="film-standard-legacy"`` and never applied by default.
+The generated profile is meant to be used with Capture One's
+"Linear Response" curve; no proprietary curve is emulated here.
 """
 
 from __future__ import annotations
@@ -48,14 +46,13 @@ from .icc import (
     write_profile,
 )
 
-C1_CURVES = ("linear", "film-standard-legacy", "film-standard-calibrated")
 INTENT_CHOICES = ("perceptual", "relative", "saturation", "mirror")
 INTENT_TAG = {"perceptual": 0, "relative": 1, "saturation": 2}
 ICC_GRID_CHOICES = (17, 33, 49, 65)
 DEFAULT_GRID = 33
 # desc tag policy: "base" keeps the base profile's description verbatim, which
-# is what Capture One matches camera profiles against (the 1.x behaviour);
-# "look" writes "<Camera>-<Look>" in Capture One's own naming style.
+# is what Capture One matches camera profiles against; "look" writes
+# "<Camera>-<Look>" in Capture One's own naming style.
 DESC_MODES = ("base", "look")
 
 
@@ -65,7 +62,6 @@ class ConversionParams:
     input_transfer: str = "sRGB"
     output_gamut: str = "sRGB"
     output_transfer: str = "sRGB"
-    c1_curve: str = "linear"
     midtone_gamma: float = 1.0
     interpolation: str = "tetrahedral"
     icc_grid: int = DEFAULT_GRID
@@ -74,7 +70,6 @@ class ConversionParams:
     domain_policy: str = "clamp"
     lut_domain_policy: str = "clamp"
     precision: str = "float"
-    legacy: bool = False
     description: str = ""
     desc_mode: str = "base"
 
@@ -91,8 +86,6 @@ class ConversionParams:
             raise ValueError("invalid interpolation or CMS precision")
         if self.domain_policy == "extrapolate" and self.interpolation == "nearest":
             raise ValueError("extrapolate requires tetrahedral or trilinear interpolation")
-        if self.c1_curve not in C1_CURVES:
-            raise ValueError(f"unknown Capture One curve mode: {self.c1_curve!r}")
         if self.icc_intent not in INTENT_CHOICES:
             raise ValueError(f"unknown ICC rendering intent: {self.icc_intent!r}")
         if not (2 <= self.icc_grid <= 129):
@@ -105,8 +98,6 @@ class ConversionParams:
             raise ValueError(f"unknown LUT domain policy: {self.lut_domain_policy!r}")
         if self.desc_mode not in DESC_MODES:
             raise ValueError(f"unknown desc mode: {self.desc_mode!r} (expected one of {DESC_MODES})")
-        if self.legacy and self.c1_curve != "film-standard-legacy":
-            raise ValueError("legacy mode always applies the film-standard-legacy C1 curve")
 
 
 def sampling_intent(params: ConversionParams) -> int:
@@ -123,66 +114,36 @@ def camera_grid(grid: int) -> np.ndarray:
     return np.stack([rr, gg, bb], axis=-1).reshape(-1, 3)
 
 
-def apply_film_standard_legacy(values: np.ndarray) -> np.ndarray:
-    """Legacy Capture One Film Standard compensation (1.25 + atan), opt-in only.
-
-    This is an empirical approximation, NOT a mathematical inverse of the
-    proprietary Capture One curve.
-    """
-    inverse_contrast = 1.0 / 1.25
-    norm_factor = np.arctan(0.5 * inverse_contrast) * 2.0
-    shifted = (np.asarray(values, dtype=np.float64) - 0.5) * inverse_contrast
-    return np.clip(np.arctan(shifted) * 2.0 / norm_factor * 0.5 + 0.5, 0.0, 1.0)
-
-
 def reference_transform(
     params: ConversionParams,
     base: BaseProfile,
     lut: CubeLUT,
     rgb: np.ndarray,
     stats: dict | None = None,
-    lut_data: np.ndarray | None = None,
 ) -> tuple[str, np.ndarray]:
     """Evaluate the full reference path for camera RGB samples.
 
     Returns ``(pcs_kind, values)`` with pcs_kind ``"Lab"`` or ``"XYZ"``.
     ``stats`` accumulates domain/clamp diagnostics for the validation report.
-    ``lut_data`` optionally overrides the LUT table (used by the legacy path).
     """
     stats = stats if stats is not None else {}
     intent = base.resolve_intent(sampling_intent(params), stats.setdefault("warnings", []))
 
-    if params.legacy:
-        linear_srgb = _camera_to_srgb_linear_legacy(params, base, rgb)
-    else:
-        kind, values = base.evaluate(rgb, intent)
-        if kind == "srgb_encoded":
-            linear_srgb = decode_transfer("sRGB", values)
-        else:
-            linear_srgb = _pcs_to_srgb_linear(params, base, values)
+    _kind, values = base.evaluate(rgb, intent)
+    linear_srgb = _pcs_to_srgb_linear(params, base, values)
 
     target_linear = linear_srgb
     if params.input_gamut != "sRGB":
         target_linear = rgb_to_rgb_linear(linear_srgb, "sRGB", params.input_gamut, params.cat)
 
     encoded = _encode_with_policy(params, target_linear, stats)
-    if lut_data is None:
-        lut_out = lut.apply(
-            encoded,
-            interpolation=params.interpolation,
-            domain_policy=params.domain_policy,
-            stats=stats,
-            lut_domain_policy=params.lut_domain_policy,
-        )
-    else:
-        lut_out = _apply_table(lut, lut_data, encoded, params.interpolation, params.domain_policy, stats, params.lut_domain_policy)
-    if params.legacy or params.c1_curve == "film-standard-legacy":
-        lut_out = apply_film_standard_legacy(lut_out)
-    elif params.c1_curve == "film-standard-calibrated":
-        raise NotImplementedError(
-            "film-standard-calibrated requires a measured calibration file "
-            "(planned in spec section 10)"
-        )
+    lut_out = lut.apply(
+        encoded,
+        interpolation=params.interpolation,
+        domain_policy=params.domain_policy,
+        stats=stats,
+        lut_domain_policy=params.lut_domain_policy,
+    )
     if params.midtone_gamma != 1.0:
         lut_out = np.sign(lut_out) * np.abs(lut_out) ** (1.0 / params.midtone_gamma)
 
@@ -196,13 +157,6 @@ def reference_transform(
     return "XYZ", xyz_d50
 
 
-def _apply_table(lut: CubeLUT, table, rgb, interpolation, domain_policy, stats, lut_domain_policy="clamp") -> np.ndarray:
-    """Evaluate a LUT with an overridden table (legacy resampled grid)."""
-    from dataclasses import replace
-    overridden = replace(lut, data_3d=table, size_3d=table.shape[0])
-    return overridden.apply(rgb, interpolation, domain_policy, stats, lut_domain_policy)
-
-
 def _pcs_to_srgb_linear(params: ConversionParams, base: BaseProfile, pcs_values: np.ndarray) -> np.ndarray:
     from .colorspaces import lab_to_xyz_d50, xyz_d50_to_rgb_linear
 
@@ -211,14 +165,6 @@ def _pcs_to_srgb_linear(params: ConversionParams, base: BaseProfile, pcs_values:
     else:
         xyz = pcs_values
     return xyz_d50_to_rgb_linear(xyz, "sRGB", params.cat)
-
-
-def _camera_to_srgb_linear_legacy(params: ConversionParams, base: BaseProfile, rgb: np.ndarray) -> np.ndarray:
-    """Legacy 8-bit ImageCms path (camera RGB -> gamma-encoded sRGB -> linear)."""
-    kind, values = base.evaluate(rgb, base.resolve_intent(sampling_intent(params)))
-    if kind != "srgb_encoded":
-        raise ValueError("legacy mode requires the 8-bit ImageCms CMS precision")
-    return decode_transfer("sRGB", values)
 
 
 def _encode_with_policy(params: ConversionParams, linear: np.ndarray, stats: dict) -> np.ndarray:
@@ -246,16 +192,10 @@ def generate_profile(
     params.validate()
     stats: dict = {"warnings": []}
 
-    grid = DEFAULT_GRID if params.legacy else params.icc_grid
+    grid = params.icc_grid
     rgb = camera_grid(grid)
 
-    lut_data = None
-    if params.legacy:
-        from .interpolation import resample_3d
-        if cube.data_3d is None:
-            raise ValueError("legacy conversion requires a 3D LUT")
-        lut_data = resample_3d(cube.data_3d, DEFAULT_GRID, "nearest")
-    pcs_kind, pcs_values = reference_transform(params, base, cube, rgb, stats, lut_data=lut_data)
+    pcs_kind, pcs_values = reference_transform(params, base, cube, rgb, stats)
     if not np.isfinite(pcs_values).all():
         raise ValueError("reference transform produced non-finite PCS values")
 
@@ -326,13 +266,13 @@ def camera_name(base: BaseProfile) -> str:
 
 
 def look_name(cube: CubeLUT) -> str:
-    """Look token from the CUBE file name (1.x convention), falling back to TITLE."""
+    """Look token from the CUBE file name, falling back to TITLE."""
     stem = cube.source_path.stem if cube.source_path is not None else ""
     return _sanitize_token(stem) or _sanitize_token(cube.title) or "LUT"
 
 
 def output_filename(cube: CubeLUT, base: BaseProfile) -> str:
-    """Output file name in the 1.x style '<Camera>-<Look>.icc'."""
+    """Output file name: '<Camera>-<Look>.icc' (Capture One's own naming style)."""
     return f"{_sanitize_token(camera_name(base)) or 'Camera'}-{look_name(cube)}.icc"
 
 

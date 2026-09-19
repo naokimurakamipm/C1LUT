@@ -46,9 +46,6 @@ def _summary_of(report) -> dict:
                      ("input_above_domain_pct", "above_pct")):
         if key in report.domain_stats:
             summary[out] = report.domain_stats[key]
-    if report.metrics_legacy is not None:
-        summary["legacy_mean"] = report.metrics_legacy.mean
-        summary["legacy_max"] = report.metrics_legacy.max
     return summary
 
 
@@ -70,7 +67,6 @@ def convert_file(
     protected=(),
     used: set | None = None,
     report_json: Path | None = None,
-    compare_legacy: bool = False,
     verbose_log: bool = True,
 ) -> FileResult:
     """Convert one CUBE, optionally validate, and write the ICC + report.
@@ -82,9 +78,6 @@ def convert_file(
     """
     if validation_samples < 0:
         raise ValueError("validation samples must be non-negative (0 = regular grid only)")
-    if compare_legacy and (params.legacy or params.c1_curve != "linear"):
-        raise ValueError("legacy comparison requires the accurate linear C1 curve")
-    validate = validate or compare_legacy
     cube_path = Path(cube_path).resolve()
     used = used if used is not None else set()
     protected = set(protected) | {base.path, cube_path}
@@ -113,9 +106,6 @@ def convert_file(
             cube, base, params, destination,
             random_samples=validation_samples, log=log, verbose=verbose_log,
         )
-        if compare_legacy:
-            from .validation import compare_legacy as measure_legacy
-            report.metrics_legacy = measure_legacy(cube, base, params, validation_samples, log)
         summary = _summary_of(report)
         if report_path is not None:
             report.to_json(report_path)

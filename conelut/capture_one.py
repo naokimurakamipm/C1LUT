@@ -1,6 +1,6 @@
 """Capture One helpers: profile directory discovery, intent probe, install.
 
-The intent probe (spec section 3) writes a test ICC whose A2B0/A2B1/A2B2 tags
+The intent probe writes a test ICC whose A2B0/A2B1/A2B2 tags
 apply clearly different transforms (red / green / blue shifts). Selecting the
 probe profile in Capture One reveals which tag the application actually uses
 for camera input profiles, which decides the recommended default for

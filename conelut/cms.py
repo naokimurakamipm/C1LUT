@@ -1,16 +1,12 @@
-"""High-precision evaluation of the Base ICC input profile (spec section 5).
+"""High-precision evaluation of the Base ICC input profile.
 
-The legacy pipeline sampled the base profile through Pillow's ImageCms on an
-8-bit RGB image, quantizing the camera RGB grid to 256 levels per channel.
-This module replaces that with a float evaluation of the profile's A2B tags:
+The base profile is evaluated in float, never quantized to 8-bit RGB:
 
 - ``mft2`` (lut16Type) and ``mAB `` (lutAToBType) tags are parsed and evaluated
   directly in float64 (input tables -> CLUT (tetrahedral) -> output tables,
   plus curves/matrix for mAB).
 - PCS values are decoded with the ICC legacy 16-bit Lab encoding (L* 100 ->
   0xFF00) or 16-bit XYZ (1.0 -> 0x8000) depending on the profile PCS.
-- The legacy 8-bit ImageCms path is still available via ``precision="8bit"``
-  for --legacy compat mode.
 - An optional ctypes bridge to a system/bundled lcms2 DLL provides an
   independent cross-check backend (``precision="lcms"``). Explicit lcms
   requests fail clearly if the runtime is unavailable.
@@ -31,7 +27,7 @@ from .icc import A2B_TAGS, ICCError, ICCProfile, PCS_LAB, PCS_XYZ, decode_legacy
 from .interpolation import interpolate_3d
 
 INTENT_FALLBACK_ORDER = (0, 1, 2)
-PRECISION_CHOICES = ("float", "lcms", "8bit")
+PRECISION_CHOICES = ("float", "lcms")
 
 
 class BaseProfileError(ValueError):
@@ -42,8 +38,7 @@ class BaseProfile:
     """A camera input profile used as the Base ICC.
 
     ``evaluate`` returns ``(kind, values)`` where kind is ``"pcs"`` (float Lab
-    or XYZ, D50) for the float/lcms2 backends or ``"srgb_encoded"`` for the
-    legacy 8-bit ImageCms backend.
+    or XYZ, D50) for the float/lcms2 backends.
     """
 
     def __init__(self, path: str | Path, precision: str = "float"):
@@ -118,8 +113,6 @@ class BaseProfile:
     def evaluate(self, rgb: np.ndarray, intent: int) -> tuple[str, np.ndarray]:
         """Evaluate the base transform; returns (kind, values)."""
         rgb = np.asarray(rgb, dtype=np.float64)
-        if self.precision == "8bit":
-            return "srgb_encoded", _evaluate_via_imagecms(self.path, rgb, intent)
         if self.precision == "lcms":
             backend = create_lcms2_backend(self.path, intent)
             if backend is None:
@@ -133,12 +126,7 @@ class BaseProfile:
 
     def evaluate_pcs_xyz_d50(self, rgb: np.ndarray, intent: int) -> np.ndarray:
         """Camera RGB -> XYZ (D50) regardless of the profile PCS."""
-        from .colorspaces import decode_transfer, rgb_linear_to_xyz_d50
-
-        kind, values = self.evaluate(rgb, intent)
-        if kind == "srgb_encoded":
-            linear = decode_transfer("sRGB", values)
-            return rgb_linear_to_xyz_d50(linear, "sRGB", "Bradford")
+        _kind, values = self.evaluate(rgb, intent)
         if self.pcs == PCS_LAB:
             return lab_to_xyz_d50(values)
         return values
@@ -411,20 +399,6 @@ def _eval_parametric(x, function, p):
     c, d = p[3:5]
     e, f = p[5:7] if function == 4 else (0.0, 0.0)
     return np.where(x >= d, np.maximum(a * x + b, 0.0) ** g + e, c * x + f)
-
-
-# -- legacy 8-bit ImageCms backend -----------------------------------------
-
-
-def _evaluate_via_imagecms(path: Path, rgb: np.ndarray, intent: int) -> np.ndarray:
-    from PIL import Image, ImageCms
-
-    srgb = ImageCms.createProfile("sRGB")
-    transform = ImageCms.buildTransform(str(path), srgb, "RGB", "RGB", renderingIntent=intent)
-    flat = (np.clip(rgb, 0.0, 1.0) * 255.0).astype(np.uint8)
-    img = Image.fromarray(flat.reshape(1, -1, 3))
-    out = ImageCms.applyTransform(img, transform)
-    return np.asarray(out).reshape(-1, 3).astype(np.float64) / 255.0
 
 
 # -- optional lcms2 ctypes bridge ------------------------------------------

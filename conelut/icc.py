@@ -1,4 +1,4 @@
-"""ICC profile reading, writing and PCS encodings (spec sections 2, 3, 4, 16, 17, 19).
+"""ICC profile reading, writing and PCS encodings.
 
 Key correctness rules enforced here:
 

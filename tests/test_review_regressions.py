@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageCms
 
-from conelut.cms import BaseProfile, BaseProfileError, MabTag, _read_curve, create_lcms2_backend, _evaluate_via_imagecms
+from conelut.cms import BaseProfile, BaseProfileError, MabTag, _read_curve, create_lcms2_backend
 from conelut.colorspaces import lab_to_xyz_d50, rgb_linear_to_xyz_d50, xyz_d50_to_lab
 from conelut.capture_one import install_profile, build_intent_probe_profile
 from conelut.convert import convert_file
@@ -136,16 +136,6 @@ def test_native_invalid_dll_is_not_silent(tmp_path, monkeypatch):
     monkeypatch.setenv("CONE_LUT_LCMS2_DLL", str(tmp_path / "missing.dll"))
     with pytest.raises(BaseProfileError, match="cannot load"):
         BaseProfile(path, precision="lcms").evaluate(np.zeros((1, 3)), 0)
-
-
-@pytest.mark.parametrize("intent", [0, 1, 2])
-def test_8bit_intent_matches_pillow(tmp_path, intent):
-    path = tmp_path / "probe.icc"
-    path.write_bytes(build_intent_probe_profile())
-    sample = np.array([[128, 128, 128]], dtype=np.uint8)
-    transform = ImageCms.buildTransform(str(path), ImageCms.createProfile("sRGB"), "RGB", "RGB", renderingIntent=intent)
-    expected = np.asarray(ImageCms.applyTransform(Image.fromarray(sample.reshape(1, 1, 3)), transform)).reshape(1, 3) / 255
-    assert np.array_equal(_evaluate_via_imagecms(path, sample / 255, intent), expected)
 
 
 @pytest.mark.parametrize("policy", ["overwrite", "rename", "skip"])
@@ -307,25 +297,13 @@ def test_v4_description_round_trip_native(tmp_path):
     assert ICCProfile(inherited).tag(b"desc") == base.profile.tag(b"desc")
 
 
-def test_legacy_aliases_priority_and_output_default():
-    args = build_arg_parser().parse_args(["--legacy", "--preset", "F-Log2", "--target-gamut", "sRGB"])
-    assert _resolve_encoding(args) == ("F-Gamut", "F-Log2", "sRGB", "sRGB")
-    args = build_arg_parser().parse_args(["--legacy", "--input-transfer", "F-Log2"])
-    assert _resolve_encoding(args)[-1] == "sRGB"
-
-
-def test_spec_encoding_aliases():
+def test_encoding_shorthands():
     args = build_arg_parser().parse_args(["--input-gamut", "bt709", "--input-transfer", "gamma2.4"])
     assert _resolve_encoding(args) == ("ITU-R BT.709", "Gamma 2.4", "ITU-R BT.709", "Gamma 2.4")
 
 
-def test_legacy_comparison_uses_same_accurate_reference(tmp_path):
-    base = make_synthetic_base(tmp_path / "base.icc")
-    cube = write_cube(tmp_path / "identity.cube", identity_cube(9))
-    assert main([str(cube), "--base-icc", str(base), "--compare-legacy", "--validation-samples", "500"]) == 0
-    run_report = next(iter(tmp_path.glob("COneLUT-run-*.json")))
-    report = json.loads(run_report.read_text(encoding="utf-8"))
-    entry = report["files"][0]
-    assert entry["validation_status"] == "PASS"
-    assert (entry["legacy_vs_accurate_reference"]["mean"]
-            > entry["lcms2_check"]["mean"] + .1)
+def test_preset_sets_input_and_output_encoding():
+    args = build_arg_parser().parse_args(["--preset", "Fujifilm F-Log2"])
+    assert _resolve_encoding(args) == ("F-Gamut", "F-Log2", "F-Gamut", "F-Log2")
+    args = build_arg_parser().parse_args(["--preset", "Fujifilm F-Log2", "--output-gamut", "sRGB"])
+    assert _resolve_encoding(args) == ("F-Gamut", "F-Log2", "sRGB", "F-Log2")

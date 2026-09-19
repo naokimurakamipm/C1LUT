@@ -130,24 +130,3 @@ def test_negative_samples_rejected_before_worker(tk_root, tmp_path, monkeypatch)
     app.start_generation()
     assert app.worker is None
     assert messages
-
-
-def test_legacy_toggle_forces_compat_settings(tk_root, tmp_path):
-    """Checking the legacy box alone must reproduce the 1.x pipeline settings.
-
-    Regression: the C1-curve selector staying on 'Linear Response' used to
-    make read_settings raise, blocking conversion entirely.
-    """
-    from gui import Cube2IccApp
-
-    base = make_synthetic_base(tmp_path / "TestCamera-Generic.icc")
-    app = Cube2IccApp(tk_root)
-    app.base_icc_path.set(str(base))
-    app.legacy.set(True)  # curve/interpolation/CAT selectors stay at defaults
-    _base, params, _out = app.read_settings()
-
-    assert params.legacy is True
-    assert params.c1_curve == "film-standard-legacy"
-    assert params.interpolation == "trilinear"
-    assert params.cat == "CAT02"
-    assert params.precision == "8bit"
