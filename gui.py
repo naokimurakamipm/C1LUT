@@ -120,9 +120,12 @@ class Cube2IccApp:
         self.precision_label = tk.StringVar(value=next(iter(PRECISION_LABELS)))
         self.desc_mode_label = tk.StringVar(value=next(iter(DESC_MODE_LABELS)))
         self.validation_samples = tk.StringVar(value="50000")
-        self.grid_auto = tk.BooleanVar(value=False)
-        self.input_shaper_var = tk.BooleanVar(value=False)
-        self.node_optimize_var = tk.BooleanVar(value=False)
+        # Precision strategies default to ON: each one is guarded (grid ladder
+        # picks the accepted rung, the shaper is A/B tested per LUT, node
+        # optimization ships only when an independent sample set improves).
+        self.grid_auto = tk.BooleanVar(value=True)
+        self.input_shaper_var = tk.BooleanVar(value=True)
+        self.node_optimize_var = tk.BooleanVar(value=True)
 
         # Output settings
         self.output_dir = tk.StringVar()
