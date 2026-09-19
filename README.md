@@ -256,7 +256,3 @@ C-One-LUT/
 
 - 本体のコードは **GNU General Public License v3** のもとで公開します ([LICENSE](LICENSE))
 - 同梱の `native/lcms2.dll` は LittleCMS (MIT License) で、`native/LCMS-LICENSE` がその表示です
-
-## 商標について
-
-"Capture One" は Capture One A/S の商標です。本プロジェクトは Capture One A/S とは無関係であり、公認・後援・スポンサーを受けていません。Leica・Sony・Fujifilm・Panasonic・ARRI その他の会社名・製品名・機能名 (S-Log3、LogC3、F-Log、V-Log 等) も各社の商標または登録商標であり、対応関係を説明する目的でのみ使用しています。
