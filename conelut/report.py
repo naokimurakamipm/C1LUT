@@ -47,13 +47,15 @@ class RunReport:
     settings: dict
     started_at: str
     entries: list[dict] = field(default_factory=list)
+    strategy: dict | None = None
 
     @classmethod
-    def start(cls, base_icc, settings: dict) -> "RunReport":
-        return cls(str(base_icc), settings, datetime.now().isoformat(timespec="seconds"))
+    def start(cls, base_icc, settings: dict, strategy: dict | None = None) -> "RunReport":
+        return cls(str(base_icc), settings, datetime.now().isoformat(timespec="seconds"),
+                   strategy=strategy)
 
     def add(self, cube_path, output_path, status: str, message: str = "",
-            summary: dict | None = None) -> None:
+            summary: dict | None = None, meta: dict | None = None) -> None:
         entry: dict = {
             "cube": Path(cube_path).name if cube_path else None,
             "input_path": str(cube_path) if cube_path else None,
@@ -82,6 +84,15 @@ class RunReport:
                     "below": round(summary["below_pct"], 3),
                     "above": round(summary["above_pct"], 3),
                 }
+            if summary.get("luminance_mean_dE"):
+                entry["input_luminance_mean_dE"] = summary["luminance_mean_dE"]
+        if meta:
+            precision = {key: meta[key] for key in
+                         ("grid_policy", "icc_grid", "input_shaper", "node_optimize")
+                         if key in meta}
+            if meta.get("grid_ladder"):
+                precision["grid_ladder"] = meta["grid_ladder"]
+            entry["precision"] = precision
         self.entries.append(entry)
 
     @property
@@ -120,6 +131,7 @@ class RunReport:
             "started_at": self.started_at,
             "base_icc": self.base_icc,
             "settings": self.settings,
+            "strategy": self.strategy,
             "totals": self.totals,
             "validation": self.validation_summary,
             "files": self.entries,

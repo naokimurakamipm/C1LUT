@@ -20,10 +20,10 @@ from tkinter import filedialog, messagebox, ttk
 from conelut.capture_one import find_profiles_dir, install_profile
 from conelut.cms import PRECISION_CHOICES, BaseProfile, BaseProfileError
 from conelut.colorspaces import CAT_CHOICES, GAMUT_CHOICES, TRANSFER_CHOICES
-from conelut.convert import CONVERT_ERRORS, convert_file
 from conelut.cube import parse_cube
 from conelut.pipeline import DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
 from conelut.presets import PRESETS, resolve_preset
+from conelut.convert import CONVERT_ERRORS, PrecisionOptions, convert_file_adaptive
 from conelut.files import destination as choose_destination
 from conelut.report import (
     RunReport,
@@ -120,6 +120,9 @@ class Cube2IccApp:
         self.precision_label = tk.StringVar(value=next(iter(PRECISION_LABELS)))
         self.desc_mode_label = tk.StringVar(value=next(iter(DESC_MODE_LABELS)))
         self.validation_samples = tk.StringVar(value="50000")
+        self.grid_auto = tk.BooleanVar(value=False)
+        self.input_shaper_var = tk.BooleanVar(value=False)
+        self.node_optimize_var = tk.BooleanVar(value=False)
 
         # Output settings
         self.output_dir = tk.StringVar()
@@ -281,6 +284,16 @@ class Cube2IccApp:
                       if values is not None else ttk.Entry(tab, textvariable=variable))
             self.control(widget, "readonly" if values is not None else "normal")
             widget.grid(row=row, column=column * 2 + 1, sticky="ew", pady=3)
+        last_row = (len(rows) + 1) // 2 + 1
+        self.control(ttk.Checkbutton(
+            tab, text="ICC グリッドを自動選択（上のグリッドから 33→49→65 へ昇格、平均/P95 基準）",
+            variable=self.grid_auto)).grid(row=last_row, column=0, columnspan=4, sticky="w", pady=(10, 2))
+        self.control(ttk.Checkbutton(
+            tab, text="入力シェーパー（誤差の大きい領域へ格子を集中。試験的にパイロット比較で採否）",
+            variable=self.input_shaper_var)).grid(row=last_row + 1, column=0, columnspan=4, sticky="w", pady=2)
+        self.control(ttk.Checkbutton(
+            tab, text="格子点の値を最適化（実験的・独立サンプルで改善した場合のみ適用）",
+            variable=self.node_optimize_var)).grid(row=last_row + 2, column=0, columnspan=4, sticky="w", pady=2)
         return tab
 
     def _output_tab(self, notebook):
@@ -500,11 +513,22 @@ class Cube2IccApp:
         if validation_samples < 0:
             messagebox.showerror("設定を確認してください", "検証サンプル数は0以上にしてください。0は格子点のみで検証します。", parent=self.root)
             return
+        grid_auto = self.grid_auto.get()
+        input_shaper = self.input_shaper_var.get()
+        node_optimize = self.node_optimize_var.get()
         options = {
             "existing": EXISTING_POLICIES[self.existing_policy.get()],
             "validate": self.validate.get(),
             "validation_samples": validation_samples,
             "install": bool(self.install_profile_var.get() and self.profile_dir),
+            "grid_auto": grid_auto,
+            "input_shaper": input_shaper,
+            "node_optimize": node_optimize,
+            "precision": PrecisionOptions(
+                grid_policy="auto" if grid_auto else "fixed",
+                input_shaper=input_shaper,
+                node_optimize=node_optimize,
+            ),
         }
         self.completed = 0
         self.cancel_event.clear()
@@ -529,8 +553,18 @@ class Cube2IccApp:
         used = set()
         protected = set(paths) | {base.path}
         total = len(paths)
+        strategy = {
+            "grid_policy": "auto" if options["grid_auto"] else "fixed",
+            "auto_max_mean_dE00": 0.05 if options["grid_auto"] else None,
+            "auto_max_p95_dE00": 0.25 if options["grid_auto"] else None,
+            "input_shaper": options["input_shaper"],
+            "node_optimize": options["node_optimize"],
+        }
+        if not any(value for key, value in strategy.items() if key != "grid_policy") and not options["grid_auto"]:
+            strategy = None
         run_report = RunReport.start(base.path,
-                                     settings_from_params(params, options["validation_samples"]))
+                                     settings_from_params(params, options["validation_samples"]),
+                                     strategy=strategy)
         try:
             for index, path in enumerate(paths, 1):
                 if self.cancel_event.is_set():
@@ -541,8 +575,8 @@ class Cube2IccApp:
                 self.events.put(("start", path, None, "", "", index, total, None))
                 result = None
                 try:
-                    result = convert_file(
-                        path, base, params,
+                    result = convert_file_adaptive(
+                        path, base, params, options["precision"],
                         output_dir=output_dir, existing=options["existing"],
                         validate=options["validate"],
                         validation_samples=options["validation_samples"],
@@ -553,7 +587,7 @@ class Cube2IccApp:
                     results.append((path, result.output_path, result.status, result.message,
                                     result.summary))
                     run_report.add(path, result.output_path, result.status, "",
-                                   summary=result.summary)
+                                   summary=result.summary, meta=result.meta)
                     self.events.put(("result", path, result.output_path, result.status,
                                      result.message, index, total, result.summary))
                 except CONVERT_ERRORS as error:

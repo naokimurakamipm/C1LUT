@@ -187,20 +187,48 @@ def generate_profile(
     base: BaseProfile,
     params: ConversionParams,
     log=print,
+    *,
+    input_curves=None,
+    node_optimize: bool = False,
+    node_optimize_samples: int = 4096,
+    node_optimize_seed: int = 20260919,
 ) -> tuple[bytes, dict]:
-    """Convert a parsed CUBE against a base profile and return (icc bytes, stats)."""
+    """Convert a parsed CUBE against a base profile and return (icc bytes, stats).
+
+    ``input_curves`` (from :mod:`conelut.shaper`) redistributes the CLUT nodes
+    toward steep regions via mft2 input tables. ``node_optimize`` additionally
+    nudges node values to reduce the between-node error, guarded by an
+    independent sample set (see :mod:`conelut.nodeopt`).
+    """
     params.validate()
     stats: dict = {"warnings": []}
 
     grid = params.icc_grid
-    rgb = camera_grid(grid)
+    if input_curves is not None:
+        from .shaper import warped_camera_grid
+        rgb = warped_camera_grid(input_curves, grid)
+    else:
+        rgb = camera_grid(grid)
 
     pcs_kind, pcs_values = reference_transform(params, base, cube, rgb, stats)
     if not np.isfinite(pcs_values).all():
         raise ValueError("reference transform produced non-finite PCS values")
 
+    if node_optimize:
+        clut, opt_report = _optimize_nodes(
+            pcs_values.reshape(grid, grid, grid, 3), pcs_kind, params, base, cube,
+            input_curves, node_optimize_samples, node_optimize_seed)
+        pcs_values = clut.reshape(-1, 3)
+        stats["node_optimize"] = opt_report
+        if opt_report["improved"]:
+            log(f"  Node optimization: independent mean dE00 "
+                f"{opt_report['check_mean_dE00_before']:.4f} -> {opt_report['check_mean_dE00_after']:.4f} "
+                f"(iteration {opt_report['best_iteration']})")
+        else:
+            log("  Node optimization: no improvement on the independent set; kept exact node values")
+
     encoded = encode_legacy_lab16(pcs_values) if pcs_kind == "Lab" else encode_xyz16(pcs_values)
-    a2b_data = make_mft2(encoded.reshape(-1), grid)
+    a2b_data = make_mft2(encoded.reshape(-1), grid, input_curves=input_curves)
 
     intent_tags: list[bytes]
     if params.icc_intent == "mirror":
@@ -244,6 +272,38 @@ def generate_profile(
     stats["intent_tags"] = [t.decode() for t in intent_tags]
     log(f"  PCS: {pcs_kind} | CLUT {grid}^3 | tags: {', '.join(stats['intent_tags'])}")
     return data, stats
+
+
+def _optimize_nodes(clut, pcs_kind, params, base, cube, input_curves, samples, seed):
+    """Nudge CLUT node values; ships only when an independent set improves."""
+    import colour
+
+    from .nodeopt import optimize_clut_values
+
+    def metric(ref, gen):
+        return colour.delta_E(ref, gen, method="CIE 2000")
+
+    rng = np.random.default_rng(seed)
+    train_rgb = rng.random((samples, 3))
+    check_rgb = np.random.default_rng(seed + 1).random((samples, 3))
+    _train_kind, ref_train = reference_transform(params, base, cube, train_rgb, {})
+    _check_kind, ref_check = reference_transform(params, base, cube, check_rgb, {})
+
+    def coords_for(rgb):
+        if input_curves is not None:
+            warped = np.stack([
+                np.interp(rgb[:, c], np.linspace(0.0, 1.0, input_curves[c].size), input_curves[c])
+                for c in range(3)
+            ], axis=-1)
+        else:
+            warped = rgb
+        return np.clip(warped, 0.0, 1.0) * (clut.shape[0] - 1)
+
+    return optimize_clut_values(
+        clut, pcs_kind, ref_train, ref_check,
+        coords_for(train_rgb), coords_for(check_rgb),
+        metric,
+    )
 
 
 def _sanitize_token(text: str) -> str:

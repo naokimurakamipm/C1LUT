@@ -78,7 +78,37 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 | `--run-report PATH` | 変換回の集計レポートの保存先 (既定は最初の出力の横に `COneLUT-run-<日時>.json`)。`--no-run-report` で無効化 |
 | `--per-file-json` | ファイルごとの詳細 `.validation.json` も出力 (既定はオフ。`--report-json PATH` で単一ファイルの詳細レポート先を指定) |
 | `--output-dir` / `--existing` | 保存先 / `rename` `skip` `overwrite` (CLI 既定は `overwrite`) |
+| `--grid-policy auto` | ICCグリッドを `--icc-grid` から 33→49→65 へ昇格し、パイロット検証が `--auto-max-mean`/`--auto-max-p95` (既定 0.05/0.25) を満たす最小サイズを選択。最大値は参考扱い |
+| `--input-shaper` | 誤差加重の入力カーブ (mft2入力テーブル) で格子を急峻領域へ再配分。LUTごとにパイロットA/Bで改善する場合のみ採用 |
+| `--node-optimize` | 実験的: 格子点の値を微調整してノード間誤差を削減。独立サンプルで改善した場合のみ適用、悪化すれば元に戻す |
 | `--probe-intent OUT.icc` | Capture One がどの A2B タグを使うか調べるプローブ ICC を生成 |
+
+## 精度ストラテジー
+
+既定では ICC CLUT は 33³ (Capture One 純正プロファイルと同じ仕様) に一様グリッドで焼き込みます。3 つの精度オプションが追加できます (GUI では詳細設定タブ):
+
+- **グリッド自動選択** (`--grid-policy auto`): 33→49→65 とパイロット検証 (小規模サンプル) しながら昇格し、平均/P95 が基準 (既定 平均≤0.05 / P95≤0.25) を満たした時点で採用。実測では Alliance は 65³ で平均 0.037 / lcms2独立 0.014 に到達します。経過はログと実行レポートの `grid_ladder` に記録されます
+- **入力シェーパー** (`--input-shaper`): まず等間隔で生成して誤差分布を測定し、誤差が大きい入力領域へ格子点を寄せた mft2 入力カーブを導出します。急峻な Look (HighContrast 系) では平均 5%超・P95 10%超の改善が出ますが、緩い Look では逆効果になるため、**パイロットA/B比較で改善した場合のみ採用**します (レポートの `input_shaper` に採否を記録)
+- **格子点値の最適化** (`--node-optimize`, 実験的): ノード間の誤差を見ながら格子点の値を減衰補正します。学習サンプルとは別シードの独立サンプルで改善が確認できた反復のみ採用し、一度も改善しなければ元の値をそのまま書き出します
+
+検証レポートには**誤差の居場所の診断** (`metrics_by_input_luminance`: 入力輝度 5 区画別の誤差) が含まれ、シャドウ集中かハイライト分散かが分かります。
+
+## 実機での検証プロトコル
+
+ΔE2000 検証は「ICC がリファレンス経路を再現していること」の証明であり、**Capture One の実際のレンダリングと一致することの証明ではありません** (C1 側の補間・レンダリングは検証の外側です)。実運用前に次を一度通すことを推奨します:
+
+1. **表示確認**: 生成 ICC をインストールし、C1 のカメラプロファイル一覧に出る・適用できる・グラデーションに banding やグレーの色付きがないことを確認 (テストチャート: 下記)
+2. **Linear Response での A/B**: 同じ RAW のバリアントを 2 つ (ベースプロファイル / 生成プロファイル + Curve = Linear Response) で現像し、LUT 適用済みの想定見た目と比較
+3. **色がおかしい場合**: `--probe-intent` で C1 が使う A2B タグを特定し、`--icc-intent` (または `mirror`) を調整
+
+テストチャート生成 (リファレンス見た目の PNG を出力):
+
+```powershell
+python tools\make_test_chart.py --base-icc LeicaSL-Generic.icm --lut Alliance.cube `
+  --preset "Rec.709 Gamma 2.4" --out chart --icc LeicaSL-Alliance.icc
+```
+
+`chart_input.png` (入力チャート) / `chart_expected.png` (リファレンスの想定見た目) / `chart_icc.png` (生成 ICC による描画 + 差分統計) が出力されます。49³/65³ を初めて使うときもこの手順で実機確認してください。
 
 ## 保存の保護とベースプロファイルの対応
 
@@ -215,7 +245,7 @@ dist\COneLUT\COneLUT.exe --selftest   # 終了コード 0 で正常
 
 ```powershell
 .venv\Scripts\python -m pip install pytest==8.3.5
-.venv\Scripts\python -m pytest tests -q          # 123 tests
+.venv\Scripts\python -m pytest tests -q          # 131 tests
 ```
 
 `tests/test_ocio.py` は OpenColorIO との独立比較 (17³/33³/65³ の CUBE 補間が OCIO と一致することを検証) で、`pip install opencolorio` していなければ自動スキップします。開発時のみ入れてください。
@@ -242,7 +272,7 @@ C-One-LUT/
 │  ├─ theme.py        Capture One 風ダークテーマ + 高 DPI 対応
 │  └─ capture_one.py  プロファイル探索 / intent プローブ / インストール
 ├─ native/            lcms2.dll とライセンス (EXE に同梱)
-├─ tools/             fetch_lcms.py (チェックサム検証付き DLL 取得) / shot_ui.py (スクリーンショット生成)
+├─ tools/             fetch_lcms.py / shot_ui.py (スクリーンショット生成) / make_test_chart.py (実機検証チャート)
 └─ tests/
 ```
 

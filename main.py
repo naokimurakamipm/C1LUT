@@ -38,7 +38,7 @@ from conelut.pipeline import (
     ConversionParams,
 )
 from conelut.presets import PRESETS, resolve_preset
-from conelut.convert import FileResult, convert_file
+from conelut.convert import FileResult, PrecisionOptions, convert_file_adaptive
 from conelut.files import destination as choose_destination
 from conelut.report import RunReport, run_report_path, settings_from_params
 from conelut.validation import DEFAULT_RANDOM_SAMPLES
@@ -65,6 +65,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     iccg = parser.add_argument_group("ICC generation")
     iccg.add_argument("--icc-grid", type=int, default=DEFAULT_GRID, choices=ICC_GRID_CHOICES,
                       help=f"ICC CLUT grid points (default {DEFAULT_GRID})")
+    prec = parser.add_argument_group("Precision strategies")
+    prec.add_argument("--grid-policy", default="fixed", choices=("fixed", "auto"),
+                      help="auto: escalate the ICC grid from --icc-grid (33->49->65) until a pilot "
+                           "validation meets --auto-max-mean / --auto-max-p95 (max stays advisory)")
+    prec.add_argument("--auto-max-mean", type=float, default=0.05, metavar="DE",
+                      help="auto grid acceptance: pilot mean dE00 threshold (default 0.05)")
+    prec.add_argument("--auto-max-p95", type=float, default=0.25, metavar="DE",
+                      help="auto grid acceptance: pilot p95 dE00 threshold (default 0.25)")
+    prec.add_argument("--input-shaper", action="store_true",
+                      help="derive error-weighted mft2 input curves from a pilot run; adopted per LUT "
+                           "only when the pilot improves (helps steep looks)")
+    prec.add_argument("--node-optimize", action="store_true",
+                      help="experimental: nudge CLUT node values to reduce between-node error; "
+                           "ships only when an independent sample set improves")
     iccg.add_argument("--icc-intent", default="perceptual",
                       choices=("perceptual", "relative", "saturation", "mirror"),
                       help="A2B tag the generated look is written to (default: perceptual; mirror = A2B0+A2B1)")
@@ -137,8 +151,16 @@ def _destination(path: Path, policy: str, used: set, protected: set) -> Path | N
 
 def convert_one(cube_path: Path, base: BaseProfile, params: ConversionParams, args, used: set,
                 protected: set) -> FileResult:
-    result = convert_file(
-        cube_path, base, params, output_dir=args.output_dir, existing=args.existing,
+    precision = PrecisionOptions(
+        grid_policy=args.grid_policy,
+        auto_max_mean=args.auto_max_mean,
+        auto_max_p95=args.auto_max_p95,
+        input_shaper=args.input_shaper,
+        node_optimize=args.node_optimize,
+    )
+    result = convert_file_adaptive(
+        cube_path, base, params, precision,
+        output_dir=args.output_dir, existing=args.existing,
         validate=args.validate, validation_samples=args.validation_samples,
         write_json=args.per_file_json or bool(args.report_json), log=print, used=used,
         protected=protected, report_json=args.report_json,
@@ -211,7 +233,17 @@ def main(argv=None) -> int:
     )
     exit_code = 0
     used: set = set()
-    run_report = RunReport.start(base.path, settings_from_params(params, args.validation_samples))
+    strategy = {
+        "grid_policy": args.grid_policy,
+        "auto_max_mean_dE00": args.auto_max_mean if args.grid_policy == "auto" else None,
+        "auto_max_p95_dE00": args.auto_max_p95 if args.grid_policy == "auto" else None,
+        "input_shaper": args.input_shaper,
+        "node_optimize": args.node_optimize,
+    }
+    if not any(strategy.values()):
+        strategy = None
+    run_report = RunReport.start(base.path, settings_from_params(params, args.validation_samples),
+                                 strategy=strategy)
     for cube_path in args.input_cube:
         try:
             if not cube_path.is_file():
@@ -219,7 +251,7 @@ def main(argv=None) -> int:
             result = convert_one(cube_path, base, params, args, used, protected)
             run_report.add(result.input_path, result.output_path, result.status,
                            "" if result.status == "success" else result.message,
-                           summary=result.summary)
+                           summary=result.summary, meta=result.meta)
         except (CubeParseError, BaseProfileError, ColorspaceError, ValueError, NotImplementedError, OSError) as exc:
             print(f"[error] {cube_path.name}: {exc}", file=sys.stderr)
             run_report.add(cube_path, None, "error", str(exc))

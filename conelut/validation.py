@@ -110,6 +110,20 @@ def _region_masks(lab: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
+LUMINANCE_BUCKETS = ((0.0, 0.1), (0.1, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.0))
+
+
+def _luminance_metrics(rgb: np.ndarray, delta: np.ndarray) -> dict[str, Metrics]:
+    """Error grouped by the *input* (camera RGB) luminance - where it lives."""
+    luminance = np.asarray(rgb, dtype=np.float64).mean(axis=1)
+    out: dict[str, Metrics] = {}
+    for low, high in LUMINANCE_BUCKETS:
+        mask = (luminance >= low) & (luminance < high + (1e-9 if high >= 1.0 else 0.0))
+        if mask.any():
+            out[f"{low:.2f}-{high:.2f}"] = _metrics_from(delta[mask])
+    return out
+
+
 def _cmm8_lab(icc_path: Path, rgb: np.ndarray) -> np.ndarray:
     """Evaluate the generated profile through Pillow's 8-bit LittleCMS path."""
     import io
@@ -143,6 +157,7 @@ class ValidationReport:
     cat: str
     metrics: Metrics
     region_metrics: dict[str, Metrics] = field(default_factory=dict)
+    luminance_metrics: dict[str, Metrics] = field(default_factory=dict)
     metrics_lcms: Metrics | None = None
     metrics_cmm8: Metrics | None = None
     metrics_grid: Metrics | None = None
@@ -188,6 +203,8 @@ class ValidationReport:
             lines.append(f"8-bit CMM:      mean {self.metrics_cmm8.mean:.4f} / max {self.metrics_cmm8.max:.4f} (informational)")
         for name, region in self.region_metrics.items():
             lines.append(f"  {name:<16} mean {region.mean:.4f} / p95 {region.p95:.4f} / max {region.max:.4f}")
+        for name, bucket in self.luminance_metrics.items():
+            lines.append(f"  input L {name:<10} mean {bucket.mean:.4f} / p95 {bucket.p95:.4f} / max {bucket.max:.4f}")
         for key in ("input_below_domain_pct", "input_above_domain_pct"):
             if key in self.domain_stats:
                 lines.append(f"{key}: {self.domain_stats[key]:.3f}%")
@@ -222,6 +239,8 @@ class ValidationReport:
         }
         if self.region_metrics:
             data["region_metrics"] = {name: m.as_dict() for name, m in self.region_metrics.items()}
+        if self.luminance_metrics:
+            data["metrics_by_input_luminance"] = {name: m.as_dict() for name, m in self.luminance_metrics.items()}
         if self.metrics_lcms is not None:
             data["metrics_lcms2"] = self.metrics_lcms.as_dict()
         if self.metrics_cmm8 is not None:
@@ -283,6 +302,7 @@ def validate_conversion(
         for name, mask in _region_masks(lab_for_regions).items()
         if mask.any()
     }
+    luminance_metrics = _luminance_metrics(random_rgb, delta[sample_slice])
 
     metrics_lcms = None
     independent_error = None
@@ -339,6 +359,7 @@ def validate_conversion(
         cat=params.cat,
         metrics=metrics,
         region_metrics=region_metrics,
+        luminance_metrics=luminance_metrics,
         metrics_lcms=metrics_lcms,
         metrics_cmm8=metrics_cmm8,
         metrics_grid=metrics_grid,

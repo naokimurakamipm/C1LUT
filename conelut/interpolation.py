@@ -63,16 +63,9 @@ def _corners(lut: np.ndarray, coords: np.ndarray):
     c101 = corner(True, False, True)
     c011 = corner(False, True, True)
     c111 = corner(True, True, True)
-    # Corner order encodes (hi_r, hi_g, hi_b) as 4*hi_r + 2*hi_g + 1*hi_b to
-    # match the code computed in _select_corners.
+    # Corner order encodes (hi_r, hi_g, hi_b) as 4*hi_r + 2*hi_g + 1*hi_b.
     stack = np.stack([c000, c001, c010, c011, c100, c101, c110, c111], axis=1)
     return f, stack
-
-
-def _select_corners(stack: np.ndarray, hi_mask: np.ndarray) -> np.ndarray:
-    """Pick the corner value selected by a boolean (N, 3) high/low axis mask."""
-    code = hi_mask[:, 0] * 4 + hi_mask[:, 1] * 2 + hi_mask[:, 2]
-    return np.take_along_axis(stack, code[:, None, None], axis=1)[:, 0, :]
 
 
 def _trilinear(lut: np.ndarray, coords: np.ndarray) -> np.ndarray:
@@ -97,29 +90,44 @@ def _trilinear(lut: np.ndarray, coords: np.ndarray) -> np.ndarray:
 
 
 def _tetrahedral(lut: np.ndarray, coords: np.ndarray) -> np.ndarray:
-    f, stack = _corners(lut, coords)
+    weights, corners = tetrahedral_weights(coords, lut.shape[:3])
+    values = lut[corners[:, :, 0], corners[:, :, 1], corners[:, :, 2]]  # (N, 4, 3)
+    return np.sum(weights[:, :, None] * values, axis=1)
 
-    # Pick one of the six tetrahedra by sorting the fractional parts of the
-    # coordinates in descending order; the traversal 000 -> +a1 -> +a1+a2 -> 111
-    # then only ever reads corners inside that tetrahedron.
+
+def tetrahedral_weights(coords: np.ndarray, shape) -> tuple[np.ndarray, np.ndarray]:
+    """Barycentric weights and corner indices of the tetrahedron around coords.
+
+    ``coords`` are (N, 3) in grid units; ``shape`` is the per-axis LUT size
+    (a 3-tuple). Coordinates are used as given - clip beforehand for
+    clamping, leave them for extrapolation. Returns ``(weights, corners)``:
+    weights is (N, 4) summing to 1 and corners is (N, 4, 3) integer node
+    indices of the enclosing tetrahedron, matching the decomposition used by
+    :func:`_tetrahedral`:
+    (1-f1)*c0 + (f1-f2)*c0+a1 + (f2-f3)*c0+a1+a2 + f3*c111.
+    """
+    size = np.asarray(shape, dtype=np.int64)
+    coords = np.asarray(coords, dtype=np.float64)
+    c0 = np.clip(np.floor(coords), 0, size - 2).astype(np.int64)
+    f = coords - c0
+
     order = np.argsort(-f, axis=1, kind="stable")
-    f1 = np.take_along_axis(f, order[:, 0:1], axis=1)[:, 0][:, None]
-    f2 = np.take_along_axis(f, order[:, 1:2], axis=1)[:, 0][:, None]
-    f3 = np.take_along_axis(f, order[:, 2:3], axis=1)[:, 0][:, None]
+    f1 = np.take_along_axis(f, order[:, 0:1], axis=1)[:, 0]
+    f2 = np.take_along_axis(f, order[:, 1:2], axis=1)[:, 0]
+    f3 = np.take_along_axis(f, order[:, 2:3], axis=1)[:, 0]
+    weights = np.stack([1.0 - f1, f1 - f2, f2 - f3, f3], axis=1)
 
     eye = np.eye(3, dtype=bool)
-    hi1 = eye[order[:, 0]]
-    hi2 = hi1 | eye[order[:, 1]]
-    hi3 = np.ones_like(hi2)
-
-    c000 = stack[:, 0]
-    v_a1 = _select_corners(stack, hi1)
-    v_a1a2 = _select_corners(stack, hi2)
-    v_111 = _select_corners(stack, hi3)
-
-    v1 = c000 + f1 * (v_a1 - c000)
-    v2 = v1 + f2 * (v_a1a2 - v_a1)
-    return v2 + f3 * (v_111 - v_a1a2)
+    step1 = eye[order[:, 0]]
+    step2 = step1 | eye[order[:, 1]]
+    step3 = np.ones_like(step2)
+    corners = np.stack([
+        c0,
+        c0 + step1.astype(np.int64),
+        c0 + step2.astype(np.int64),
+        c0 + step3.astype(np.int64),
+    ], axis=1)
+    return weights, corners
 
 
 def _nearest(lut: np.ndarray, coords: np.ndarray) -> np.ndarray:

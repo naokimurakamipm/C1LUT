@@ -172,12 +172,18 @@ def decode_xyz16(encoded: np.ndarray) -> np.ndarray:
 # -- tag builders ----------------------------------------------------------
 
 
-def make_mft2(clut_u16_flat: np.ndarray, grid: int) -> bytes:
+def make_mft2(clut_u16_flat: np.ndarray, grid: int, input_curves=None) -> bytes:
     """Build a lut16Type (mft2) A2B tag.
 
     ``clut_u16_flat`` must be a flat uint16 array in ICC CLUT order: the first
     input channel (R for RGB data) varies SLOWEST, i.e. index =
-    r*grid^2 + g*grid + b. Input/output tables are 256-entry identity ramps.
+    r*grid^2 + g*grid + b. Input/output tables are 256-entry ramps by default.
+
+    ``input_curves`` optionally supplies three monotonic warps
+    ``[0, 1] -> [0, 1]`` (arrays of equal length >= 2, endpoints 0 and 1) used
+    as per-channel input shaper tables: they redistribute the CLUT nodes so
+    steep regions of the transform get a finer grid. The CLUT must then be
+    sampled at the *inverse* warp positions.
     """
     clut_u16_flat = np.asarray(clut_u16_flat, dtype=np.uint16)
     expected = grid**3 * 3
@@ -187,11 +193,28 @@ def make_mft2(clut_u16_flat: np.ndarray, grid: int) -> bytes:
     out += bytes((3, 3, grid, 0))
     out += struct.pack(">9i", s15_fixed16(1.0), 0, 0, 0, s15_fixed16(1.0), 0, 0, 0, s15_fixed16(1.0))
     out += struct.pack(">HH", 256, 256)
-    ramp = np.round(np.linspace(0.0, 65535.0, 256)).astype(">u2").tobytes()
-    out += ramp * 3
+    ramp = np.round(np.linspace(0.0, 65535.0, 256)).astype(">u2")
+    input_ramps = [ramp] * 3
+    if input_curves is not None:
+        input_ramps = [_encode_input_curve(curve) for curve in input_curves]
+    out += input_ramps[0].tobytes() + input_ramps[1].tobytes() + input_ramps[2].tobytes()
     out += clut_u16_flat.astype(">u2").tobytes()
-    out += ramp * 3
+    out += ramp.tobytes() * 3
     return bytes(out)
+
+
+def _encode_input_curve(curve: np.ndarray) -> np.ndarray:
+    """Resample a monotonic [0,1] warp to the 256-entry mft2 input table."""
+    curve = np.asarray(curve, dtype=np.float64)
+    if curve.ndim != 1 or curve.size < 2:
+        raise ICCError("input shaper curve requires a 1D array with at least two points")
+    if curve[0] != 0.0 or curve[-1] != 1.0:
+        raise ICCError("input shaper curve must start at 0 and end at 1")
+    if np.any(np.diff(curve) < -1e-9):
+        raise ICCError("input shaper curve must be non-decreasing")
+    x = np.linspace(0.0, 1.0, curve.size)
+    sampled = np.interp(np.linspace(0.0, 1.0, 256), x, curve)
+    return np.clip(np.rint(sampled * 65535.0), 0, 65535).astype(">u2")
 
 
 def make_desc(text: str, version: tuple[int, int]) -> bytes:
