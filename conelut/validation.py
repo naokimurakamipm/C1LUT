@@ -254,8 +254,13 @@ def validate_conversion(
     include_lcms: bool | None = None,
     include_cmm8: bool = False,
     log=print,
+    verbose: bool = True,
 ) -> ValidationReport:
-    """Measure how well the written ICC reproduces the reference pipeline."""
+    """Measure how well the written ICC reproduces the reference pipeline.
+
+    ``verbose=False`` skips printing the detailed report block; the returned
+    report (and its numbers) is identical.
+    """
     if random_samples < 0:
         raise ValueError("validation samples must be non-negative")
     icc_path = Path(icc_path)
@@ -355,9 +360,10 @@ def validate_conversion(
         seed=seed,
         independent_error=independent_error,
     )
-    log("  Validation report")
-    for line in report.summary_lines():
-        log(f"  {line}")
+    if verbose:
+        log("  Validation report")
+        for line in report.summary_lines():
+            log(f"  {line}")
     return report
 
 

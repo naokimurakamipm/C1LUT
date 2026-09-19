@@ -66,9 +66,13 @@ def test_threaded_conversion_completes(tk_root, tmp_path):
     row = next(iter(app.path_rows.values()))
     assert app.tree.item(row, "values")[2] == "完了"
     outputs = list((tmp_path / "out").glob("*.icc"))
-    reports = list((tmp_path / "out").glob("*.validation.json"))
+    reports = list((tmp_path / "out").glob("COneLUT-run-*.json"))
     assert len(outputs) == 1
     assert len(reports) == 1
+    # Compact numbers only: the log carries the ΔE2000 summary line.
+    log_text = app.log_area.get("1.0", "end")
+    assert "ΔE2000 平均" in log_text
+    assert "Samples:" not in log_text
     # UI recovered: controls re-enabled, worker cleared.
     assert str(app.generate_button.cget("state")) != "disabled"
 

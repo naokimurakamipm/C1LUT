@@ -323,6 +323,9 @@ def test_legacy_comparison_uses_same_accurate_reference(tmp_path):
     base = make_synthetic_base(tmp_path / "base.icc")
     cube = write_cube(tmp_path / "identity.cube", identity_cube(9))
     assert main([str(cube), "--base-icc", str(base), "--compare-legacy", "--validation-samples", "500"]) == 0
-    report = json.loads((tmp_path / "TestCamera-identity.validation.json").read_text(encoding="utf-8"))
-    assert report["validation_status"] == "PASS"
-    assert report["metrics_legacy_vs_accurate_reference"]["mean_delta_e_2000"] > report["metrics_lcms2"]["mean_delta_e_2000"] + .1
+    run_report = next(iter(tmp_path.glob("COneLUT-run-*.json")))
+    report = json.loads(run_report.read_text(encoding="utf-8"))
+    entry = report["files"][0]
+    assert entry["validation_status"] == "PASS"
+    assert (entry["legacy_vs_accurate_reference"]["mean"]
+            > entry["lcms2_check"]["mean"] + .1)

@@ -24,6 +24,13 @@ from conelut.convert import CONVERT_ERRORS, convert_file
 from conelut.cube import parse_cube
 from conelut.pipeline import C1_CURVES, DEFAULT_GRID, ICC_GRID_CHOICES, ConversionParams
 from conelut.presets import PRESETS, resolve_preset
+from conelut.files import destination as choose_destination
+from conelut.report import (
+    RunReport,
+    format_metrics_line,
+    run_report_path,
+    settings_from_params,
+)
 from conelut.theme import (
     CARD_FRAME,
     DIM_LABEL,
@@ -124,7 +131,6 @@ class Cube2IccApp:
         # Output settings
         self.output_dir = tk.StringVar()
         self.existing_policy = tk.StringVar(value=next(iter(EXISTING_POLICIES)))
-        self.write_json = tk.BooleanVar(value=True)
         self.install_profile_var = tk.BooleanVar(value=False)
 
         self.count_text = tk.StringVar(value="0 ファイル")
@@ -525,7 +531,6 @@ class Cube2IccApp:
             "existing": EXISTING_POLICIES[self.existing_policy.get()],
             "validate": self.validate.get(),
             "validation_samples": validation_samples,
-            "write_json": self.write_json.get(),
             "install": bool(self.install_profile_var.get() and self.profile_dir),
         }
         self.completed = 0
@@ -551,13 +556,16 @@ class Cube2IccApp:
         used = set()
         protected = set(paths) | {base.path}
         total = len(paths)
+        run_report = RunReport.start(base.path,
+                                     settings_from_params(params, options["validation_samples"]))
         try:
             for index, path in enumerate(paths, 1):
                 if self.cancel_event.is_set():
-                    results.append((path, None, "cancelled", "キャンセルしました。"))
-                    self.events.put(("result", path, None, "cancelled", "キャンセルしました。", index, total))
+                    results.append((path, None, "cancelled", "キャンセルしました。", None))
+                    run_report.add(path, None, "cancelled", "キャンセルしました。")
+                    self.events.put(("result", path, None, "cancelled", "キャンセルしました。", index, total, None))
                     continue
-                self.events.put(("start", path, None, "", "", index, total))
+                self.events.put(("start", path, None, "", "", index, total, None))
                 result = None
                 try:
                     result = convert_file(
@@ -565,15 +573,20 @@ class Cube2IccApp:
                         output_dir=output_dir, existing=options["existing"],
                         validate=options["validate"],
                         validation_samples=options["validation_samples"],
-                        write_json=options["write_json"],
+                        write_json=False, verbose_log=False,
                         used=used, protected=protected,
                         log=lambda message: self.events.put(("log", message)),
                     )
-                    results.append((path, result.output_path, result.status, result.message))
-                    self.events.put(("result", path, result.output_path, result.status, result.message, index, total))
+                    results.append((path, result.output_path, result.status, result.message,
+                                    result.summary))
+                    run_report.add(path, result.output_path, result.status, "",
+                                   summary=result.summary)
+                    self.events.put(("result", path, result.output_path, result.status,
+                                     result.message, index, total, result.summary))
                 except CONVERT_ERRORS as error:
-                    results.append((path, None, "error", str(error)))
-                    self.events.put(("result", path, None, "error", str(error), index, total))
+                    results.append((path, None, "error", str(error), None))
+                    run_report.add(path, None, "error", str(error))
+                    self.events.put(("result", path, None, "error", str(error), index, total, None))
                 if result is not None and result.output_path and options["install"] and self.profile_dir:
                     try:
                         installed = install_profile(result.output_path, Path(self.profile_dir), options["existing"], protected=protected, used=used,
@@ -583,10 +596,29 @@ class Cube2IccApp:
                         self.events.put(("log", f"ICCの保存は完了しましたが、インストールに失敗しました: {error}"))
         except BaseException as error:  # noqa: BLE001 - the UI must never stay stuck
             self.events.put(("log", f"内部エラー: {type(error).__name__}: {error}"))
-            results.append((None, None, "error", f"内部エラー: {type(error).__name__}: {error}"))
+            results.append((None, None, "error", f"内部エラー: {type(error).__name__}: {error}", None))
+            run_report.add(None, None, "error", f"内部エラー: {type(error).__name__}: {error}")
         finally:
             # Always posted, even when the worker itself failed.
-            self.events.put(("done", results))
+            report_path = self._write_run_report(run_report, paths, output_dir,
+                                                 options["existing"], used, protected)
+            self.events.put(("done", results, report_path))
+
+    def _write_run_report(self, run_report, paths, output_dir, existing, used, protected):
+        """One aggregate JSON per run, beside the outputs; never blocks the UI."""
+        try:
+            outputs = [entry["output_path"] for entry in run_report.entries if entry["output_path"]]
+            first = Path(outputs[0]) if outputs else None
+            directory = output_dir or (first.parent if first else None) or Path(paths[0]).parent
+            path = choose_destination(run_report_path(directory), existing, used, protected,
+                                      lambda _message: None)
+            if path is not None:
+                run_report.write(path)
+                self.events.put(("log", f"実行レポート: {path}"))
+                return path
+        except OSError as error:
+            self.events.put(("log", f"実行レポートの保存に失敗しました: {error}"))
+        return None
 
     def set_busy(self, busy):
         for widget, state in self.controls:
@@ -623,15 +655,18 @@ class Cube2IccApp:
 
         Event schemas posted by conversion_worker:
             ("log", message)
-            ("done", results)
-            ("start"|"result", path, output, status, message, index, total)
+            ("done", results, report_path)
+            ("start"|"result", path, output, status, message, index, total, summary)
+
+        ``results`` is a list of (path, output, status, message, summary);
+        ``summary`` carries the essential validation numbers only.
         """
         kind = event[0]
         if kind == "log":
             self.log(event[1])
             return
         if kind == "done":
-            results = event[1]
+            results, report_path = event[1], event[2]
             self.worker = None
             self.set_busy(False)
             counts = {"success": 0, "error": 0, "skipped": 0, "cancelled": 0}
@@ -640,8 +675,19 @@ class Cube2IccApp:
             summary = " / ".join(f"{STATUS_LABELS[key]} {counts[key]}" for key in counts)
             self.status_text.set(f"処理終了: {summary}")
             self.log(f"処理終了: {summary}")
+            summaries = [entry[4] for entry in results if entry[4]]
+            if summaries:
+                validated = sum(1 for s in summaries if s.get("mean") is not None)
+                worst_mean = max(s["mean"] for s in summaries)
+                worst_max = max(s["max"] for s in summaries)
+                worst_status = max((s.get("validation_status") for s in summaries),
+                                   key=lambda value: {"PASS": 0, "UNVERIFIED": 1, "REVIEW": 2}.get(value, 1))
+                self.log(f"検証サマリ: {validated} ファイル / {worst_status}  |  "
+                         f"最悪 平均 ΔE2000 {worst_mean:.4f}・最大 {worst_max:.4f}")
+            if report_path is not None:
+                self.status_text.set(f"処理終了: {summary}（レポート保存済み）")
             return
-        _kind, path, output, status, message, _index, total = event
+        _kind, path, output, status, message, _index, total, summary = event
         row = self.path_rows.get(self.path_key(Path(path))) if path is not None else None
         if kind == "start":
             if row is not None:
@@ -658,7 +704,12 @@ class Cube2IccApp:
                 self.tree.item(row, tags=(status,))
             self.progress.configure(value=self.completed)
             self.progress_text.set(f"{self.completed} / {total}")
-            self.log(f"[{label}] {Path(path).name}: {message}")
+            metrics = format_metrics_line(summary) if summary else ""
+            if metrics:
+                # 必要数値だけ: file name + compact ΔE2000/lcms2/判定 line.
+                self.log(f"[{label}] {Path(path).name}: {metrics}")
+            else:
+                self.log(f"[{label}] {Path(path).name}: {message}")
 
     def poll_events(self):
         # A failing handler must never kill the polling loop: if this after()

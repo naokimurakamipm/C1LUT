@@ -46,10 +46,10 @@ python main.py LC_Spectra_Alliance.cube `
 
 ```text
 LeicaSL601-LC_Alliance.icc
-LeicaSL601-LC_Alliance.validation.json
+COneLUT-run-20260919-101239.json   ← この変換回の集計レポート 1 ファイル
 ```
 
-出力ファイル名は `<カメラ名>-<LUT名>.icc` 形式です。カメラ名はベース ICC の desc/ファイル名から、LUT名は CUBE のファイル名から取ります。
+出力ファイル名は `<カメラ名>-<LUT名>.icc` 形式です。カメラ名はベース ICC の desc/ファイル名から、LUT名は CUBE のファイル名から取ります。検証レポートは**変換回ごとに 1 つの JSON にまとめられます**（全ファイルの要点メトリクス + 全体統計）。ファイルごとの詳細レポートが必要な場合は `--per-file-json` を付けると従来どおり `<name>.validation.json` も出力します。
 
 ### カメラとの紐づけ（desc モード）
 
@@ -73,9 +73,11 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 | `--domain-policy` | DOMAIN 外入力: `clamp` (既定) / `error` / `extrapolate`。クランプ率はレポートに記録 |
 | `--lut-domain-policy` | CLUT ドメイン外: `clamp` / `error` |
 | `--cms-precision` | `float` (既定) / `lcms` / `8bit` |
-| `--validate` | ΔE2000 検証を実行し JSON を保存 (ネイティブlcms2による独立検証を含む) |
+| `--validate` | ΔE2000 検証を実行 (ネイティブlcms2による独立検証を含む) |
 | `--compare-legacy` | 検証時に legacy 相当設定との誤差比較も追加 |
 | `--validation-samples` | ランダム検証サンプル数 (既定 100000、固定シードで再現可能)。`0` で格子点のみ |
+| `--run-report PATH` | 変換回の集計レポートの保存先 (既定は最初の出力の横に `COneLUT-run-<日時>.json`)。`--no-run-report` で無効化 |
+| `--per-file-json` | ファイルごとの詳細 `.validation.json` も出力 (既定はオフ。`--report-json PATH` で単一ファイルの詳細レポート先を指定) |
 | `--output-dir` / `--existing` | 保存先 / `rename` `skip` `overwrite` (CLI 既定は `overwrite`) |
 | `--probe-intent OUT.icc` | Capture One がどの A2B タグを使うか調べるプローブ ICC を生成 |
 
@@ -83,7 +85,7 @@ Look ごとに別々の名前で表示したい場合は `--desc-mode look` を�
 
 ## 保存の保護とベースプロファイルの対応
 
-- **ベース ICC と入力 CUBE は決して上書きしません**。出力ファイル名がこれらと一致する場合(相対パス・大文字小文字の違い・ハードリンク等も含めて同一性判定)、`--existing` の設定に関係なく自動的に別名で保存します。検証レポート (`--report-json`) の保存先も同じ保護を受けます
+- **ベース ICC と入力 CUBE は決して上書きしません**。出力ファイル名がこれらと一致する場合(相対パス・大文字小文字の違い・ハードリンク等も含めて同一性判定)、`--existing` の設定に関係なく自動的に別名で保存します。検証レポート (実行レポート・`--report-json`) の保存先も同じ保護を受けます
 - **Capture One へのコピー (GUI のインストール先コピー) も同じ保護と衝突ポリシー** を引き継ぎます。コピー先にベース ICC と同名のファイルがある場合は置き換えません
 - 同一バッチ内で同名になる複数の結果 (別フォルダーの同名 CUBE など) は自動的に別ファイルとして保存され、互いに上書きしません
 - `--existing overwrite` は保護対象・バッチ内先行結果以外の既存ファイルに対してのみ上書きします (GUI の「既存ファイルを上書き」も同様)
@@ -104,6 +106,42 @@ python main.py --probe-intent probe.icc
 
 1. **内蔵評価** (自前のfloatパーサ/補間): ランダムサンプル + 33³ 格子点の両方で誤差を測定
 2. **独立検証** (ネイティブlcms2): ベース ICC と生成 ICC の**両方**を LittleCMS で評価してリファレンス経路を再構成し、内蔵実装と誤差を共有しない状態で比較。格子端点を含み、`near_gamut_boundary` 領域別統計も追加
+
+### 変換回レポート (既定)
+
+1 回の変換 (GUI の一括変換・CLI の 1 実行) ごとに、**集計 JSON が 1 ファイル**だけ出力されます。全ファイルの要点メトリクス (mean / median / p95 / p99 / max・lcms2 検証・判定) と、実行設定・全体統計 (成功/エラー数、最悪 mean/max、総合判定) を含みます:
+
+```text
+out/
+├─ LeicaSL601-Gold200.icc
+├─ LeicaSL601-Teal_Light.icc
+└─ COneLUT-run-20260919-101239.json   ← この変換回の集計
+```
+
+```json
+{
+  "tool": "C-One LUT",
+  "started_at": "2026-09-19T10:12:38",
+  "settings": { "input_gamut": "ITU-R BT.709", "...": "..." },
+  "totals": { "files": 2, "success": 2, "error": 0, "skipped": 0, "cancelled": 0 },
+  "validation": {
+    "validated": 2, "overall_status": "PASS",
+    "worst_mean_dE2000": { "value": 0.0008, "cube": "look1.cube" },
+    "worst_max_dE2000":  { "value": 0.0028, "cube": "look1.cube" }
+  },
+  "files": [
+    { "cube": "look1.cube", "output_path": ".../LeicaSL601-look1.icc", "status": "success",
+      "metrics_dE2000": { "mean": 0.0008, "p95": 0.0014, "max": 0.0028 },
+      "lcms2_check": { "mean": 0.0008, "max": 0.0032 }, "validation_status": "PASS" }
+  ]
+}
+```
+
+CLI では `--run-report PATH` で保存先を指定、`--no-run-report` で無効化できます。
+
+### ファイルごとの詳細レポート (オプトイン)
+
+`--per-file-json` を付けると、従来の `<name>.validation.json` (領域別統計・ドメイン統計・サンプルシードなど全文) も各 ICC の横に出力します。CLI を単独で使った場合のコンソールには引き続き詳細ブロックが表示されます:
 
 ```text
 Validation report
@@ -136,7 +174,8 @@ Capture One を想起させるダークテーマ (チャコール + オレンジ
 - **ベース ICC 検索**: 検出したプロファイルフォルダーを再帰的に走査し、キーワード (空白区切り AND、大文字小文字不限) でドロップダウンを絞り込めます。選択欄は検索にリアルタイムで追従し、絞り込みの先頭ヒットを表示します (現在の選択が引き続き一致する場合は保持)。検索を空にしても選択は変わりません (例: `leica sl`)
 - **詳細設定**: 色域 / トランスファー、補間、ICC グリッド、intent、CAT、ドメインポリシー、CMS 精度、legacy モード
 - CUBE を追加すると TITLE・サイズ・DOMAIN・`#Input:` ヒントを表示します (ヒントだけでトランスファーは決めません)
-- 変換後、ログに ΔE2000 サマリ、`.validation.json` に詳細を出力
+- **変換後のログは必要数値だけ**: 各ファイル 1 行 (`ΔE2000 平均 / P95 / 最大 | lcms2 平均 / 最大 → 判定`) と、最後に全体サマリ (`検証サマリ: N ファイル / PASS | 最悪 平均…・最大…`) だけを表示します
+- 検証の詳細は**変換回ごとに 1 つの JSON** (`COneLUT-run-<日時>.json`) に出力先フォルダーに保存されます (実行設定・全ファイルのメトリクス・全体統計入り)
 
 ## Legacy モード
 
@@ -209,6 +248,7 @@ C-One-LUT/
 │  ├─ icc.py          ICC 読み書き、legacy Lab16、Profile ID、mft2 生成
 │  ├─ pipeline.py     リファレンス変換 + ICC 生成
 │  ├─ validation.py   ΔE2000 検証 (内蔵 + ネイティブlcms2独立検証)
+│  ├─ report.py       変換回ごとの集計 JSON レポート
 │  ├─ convert.py      1 ファイル変換オーケストレーション
 │  ├─ files.py        保存先保護・衝突解決・アトミック書き込み
 │  ├─ presets.py      簡易プリセット (短縮名エイリアス込み)

@@ -36,17 +36,60 @@ def test_basic_conversion_with_validation(env):
     assert code == 0
     outputs = list((tmp / "out").glob("*.icc"))
     assert len(outputs) == 1
-    reports = list((tmp / "out").glob("*.validation.json"))
+    # One aggregate report per run; per-file JSONs are opt-in now.
+    reports = list((tmp / "out").glob("COneLUT-run-*.json"))
     assert len(reports) == 1
+    assert not list((tmp / "out").glob("*.validation.json"))
     data = json.loads(reports[0].read_text(encoding="utf-8"))
-    assert data["metrics"]["mean_delta_e_2000"] < 0.10
-    assert data["meets_targets"] is True
+    assert data["totals"] == {"files": 1, "success": 1, "error": 0, "skipped": 0, "cancelled": 0}
+    assert data["files"][0]["metrics_dE2000"]["mean"] < 0.10
+    assert data["files"][0]["validation_status"] == "PASS"
+    assert data["validation"]["overall_status"] == "PASS"
+    assert "lcms2_check" in data["files"][0]
     # Output follows the 1.x style <Camera>-<Look>.icc and keeps the base
     # profile's desc so Capture One links the profile to the camera.
     assert outputs[0].stem == "TestCamera-film"
     from conelut.icc import ICCProfile
 
     assert ICCProfile(outputs[0].read_bytes()).description() == "TestCamera-Generic"
+
+
+def test_per_file_json_is_opt_in(env):
+    base, cube, tmp = env
+    code = main([
+        str(cube), "--base-icc", str(base), "--validate",
+        "--validation-samples", "2000", "--per-file-json",
+        "--output-dir", str(tmp / "detail"),
+    ])
+    assert code == 0
+    detailed = list((tmp / "detail").glob("*.validation.json"))
+    assert len(detailed) == 1
+    data = json.loads(detailed[0].read_text(encoding="utf-8"))
+    assert data["metrics"]["mean_delta_e_2000"] < 0.10
+    # The run report is written alongside the detailed one.
+    assert list((tmp / "detail").glob("COneLUT-run-*.json"))
+
+
+def test_run_report_flags(env, capsys):
+    base, cube, tmp = env
+    custom = tmp / "reports" / "my-run.json"
+    code = main([
+        str(cube), "--base-icc", str(base), "--validate",
+        "--validation-samples", "2000", "--run-report", str(custom),
+    ])
+    assert code == 0
+    assert custom.is_file()
+    data = json.loads(custom.read_text(encoding="utf-8"))
+    assert data["tool"] == "C-One LUT"
+    assert data["settings"]["validation_samples"] == 2000
+    assert "Run report:" in capsys.readouterr().out
+
+    code = main([
+        str(cube), "--base-icc", str(base),
+        "--output-dir", str(tmp / "noreport"), "--no-run-report",
+    ])
+    assert code == 0
+    assert not list((tmp / "noreport").glob("COneLUT-run-*.json"))
 
 
 def test_desc_mode_look_names_profiles_by_camera_and_look(env):

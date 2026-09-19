@@ -13,7 +13,10 @@ Examples (spec section 37):
 
 Outputs:
     LeicaSL601-LC_Alliance.icc
-    LeicaSL601-LC_Alliance.validation.json
+    COneLUT-run-YYYYMMDD-HHMMSS.json  (aggregate report for this run)
+
+Detailed per-file reports are opt-in: --per-file-json writes
+<name>.validation.json next to every ICC.
 
 Legacy behaviour of 1.x legacy: --legacy (or --compat 2026.09).
 Intent probe for Capture One: --probe-intent probe.icc
@@ -42,8 +45,9 @@ from conelut.pipeline import (
     output_filename,
 )
 from conelut.presets import PRESETS, LEGACY_PRESET_ALIASES, resolve_preset
-from conelut.convert import convert_file
+from conelut.convert import FileResult, convert_file
 from conelut.files import destination as choose_destination
+from conelut.report import RunReport, run_report_path, settings_from_params
 from conelut.validation import DEFAULT_RANDOM_SAMPLES, validate_conversion
 
 LEGACY_COMPAT = "2026.09"
@@ -104,9 +108,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
                      help="also measure legacy output against the same accurate reference (implies --validate)")
     val.add_argument("--validation-samples", type=int, default=DEFAULT_RANDOM_SAMPLES,
                      help=f"random validation samples (default {DEFAULT_RANDOM_SAMPLES})")
-    val.add_argument("--report-json", type=Path, help="path for the validation JSON report")
+    val.add_argument("--report-json", type=Path, help="path for the per-file detailed validation JSON")
+    val.add_argument("--per-file-json", action="store_true",
+                     help="also write the detailed .validation.json next to every ICC "
+                          "(default: one aggregated run report per invocation)")
     val.add_argument("--no-report-json", action="store_true",
-                     help="skip writing the .validation.json file next to the ICC")
+                     help="deprecated: per-file JSONs are off by default now (use --per-file-json to enable)")
+    val.add_argument("--run-report", type=Path, metavar="PATH",
+                     help="path for the per-run aggregate JSON report (default: beside the first output)")
+    val.add_argument("--no-run-report", action="store_true",
+                     help="skip writing the aggregate run report JSON")
     out = parser.add_argument_group("Output")
     out.add_argument("--output-dir", type=Path, help="output directory (default: beside each CUBE)")
     out.add_argument("--existing", default="overwrite", choices=("rename", "skip", "overwrite"),
@@ -167,17 +178,17 @@ def _destination(path: Path, policy: str, used: set, protected: set) -> Path | N
 
 
 def convert_one(cube_path: Path, base: BaseProfile, params: ConversionParams, args, used: set,
-                protected: set) -> int:
+                protected: set) -> FileResult:
     result = convert_file(
         cube_path, base, params, output_dir=args.output_dir, existing=args.existing,
         validate=args.validate, validation_samples=args.validation_samples,
-        write_json=not args.no_report_json, log=print, used=used, protected=protected,
-        report_json=args.report_json,
+        write_json=args.per_file_json or bool(args.report_json), log=print, used=used,
+        protected=protected, report_json=args.report_json,
         compare_legacy=args.compare_legacy,
     )
     if result.status == "skipped":
         print(f"[skip] {cube_path.name}: output already exists")
-    return 0
+    return result
 
 
 def main(argv=None) -> int:
@@ -250,14 +261,31 @@ def main(argv=None) -> int:
     )
     exit_code = 0
     used: set = set()
+    run_report = RunReport.start(base.path, settings_from_params(params, args.validation_samples))
     for cube_path in args.input_cube:
         try:
             if not cube_path.is_file():
                 raise CubeParseError(f"CUBE file not found: {cube_path}")
-            exit_code |= convert_one(cube_path, base, params, args, used, protected)
+            result = convert_one(cube_path, base, params, args, used, protected)
+            run_report.add(result.input_path, result.output_path, result.status,
+                           "" if result.status == "success" else result.message,
+                           summary=result.summary)
         except (CubeParseError, BaseProfileError, ColorspaceError, ValueError, NotImplementedError, OSError) as exc:
             print(f"[error] {cube_path.name}: {exc}", file=sys.stderr)
+            run_report.add(cube_path, None, "error", str(exc))
             exit_code = 1
+    if not args.no_run_report:
+        directory = args.run_report.parent if args.run_report else None
+        if directory is None:
+            outputs = [e["output_path"] for e in run_report.entries if e["output_path"]]
+            first = Path(outputs[0]) if outputs else None
+            directory = (args.output_dir or (first.parent if first else None)
+                         or args.input_cube[0].parent)
+        path = (args.run_report if args.run_report is not None
+                else choose_destination(run_report_path(directory), args.existing, used, protected, print))
+        if path is not None:
+            run_report.write(path)
+            print(f"Run report: {path}")
     return exit_code
 
 
